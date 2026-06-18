@@ -10,6 +10,7 @@ import uvicorn
 from intake_system.classifier import classify_item
 from intake_system.config import ConfigError, load_active_context, load_config
 from intake_system.db import IntakeRepository, apply_migrations, connect, upsert_many
+from intake_system.maintenance import repair_readwise_source_urls
 from intake_system.readwise import ReadwiseClient
 from intake_system.readwise import normalize_readwise_item
 from intake_system.review import (
@@ -30,6 +31,7 @@ classify_app = typer.Typer(help="Classification commands.")
 review_app = typer.Typer(help="Markdown review commands.")
 fixtures_app = typer.Typer(help="Fixture ingestion commands.")
 web_app = typer.Typer(help="Review UI commands.")
+maintenance_app = typer.Typer(help="Maintenance and data repair commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(readwise_app, name="readwise")
@@ -38,6 +40,7 @@ app.add_typer(classify_app, name="classify")
 app.add_typer(review_app, name="review")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(web_app, name="web")
+app.add_typer(maintenance_app, name="maintenance")
 
 
 def _config_path(value: Optional[Path]) -> Path | None:
@@ -238,6 +241,24 @@ def web_serve(
     from intake_system.web import create_app
 
     uvicorn.run(create_app(cfg), host=host, port=port)
+
+
+@maintenance_app.command("repair-source-urls")
+def maintenance_repair_source_urls(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    apply: bool = typer.Option(False, "--apply", help="Write repaired Readwise source URLs to DB and staged notes."),
+) -> None:
+    cfg = _load(_config_path(config))
+    with connect(cfg.database.dsn) as conn:
+        result = repair_readwise_source_urls(conn, dry_run=not apply)
+        if apply:
+            conn.commit()
+    mode = "Repaired" if apply else "Would repair"
+    typer.echo(
+        f"{mode} {result.updated_items} item(s), {result.updated_review_notes} review note(s), "
+        f"{result.updated_staged_files} staged file(s); scanned {result.scanned}, "
+        f"missing staged files {result.missing_staged_files}."
+    )
 
 
 if __name__ == "__main__":

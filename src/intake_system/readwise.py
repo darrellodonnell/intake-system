@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Iterator
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -40,7 +41,7 @@ class ReadwiseClient:
 
 def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") -> SourceItem:
     source_id = str(raw.get("id") or raw.get("document_id") or raw.get("url") or content_hash(raw))
-    url = raw.get("url") or raw.get("source_url") or raw.get("site_url")
+    url = canonical_source_url(raw)
     source_type = _source_type(raw, url)
     title = raw.get("title") or raw.get("document_title") or url or f"Readwise item {source_id}"
     captured_at = _parse_datetime(
@@ -65,6 +66,41 @@ def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") ->
         content_status=content_status,
         review_priority=_review_priority(source_type, raw),
     )
+
+
+def canonical_source_url(raw: dict[str, Any]) -> str | None:
+    """Return the public source URL, preferring the original URL over Readwise Reader URLs."""
+    values = [raw.get("source_url"), raw.get("url"), raw.get("site_url")]
+    for value in values:
+        if value and not is_readwise_reader_url(str(value)):
+            return canonical_public_url(str(value))
+    for value in values:
+        if value:
+            return canonical_public_url(str(value))
+    return None
+
+
+def canonical_public_url(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    if host in {"twitter.com", "www.twitter.com"}:
+        parsed = parsed._replace(scheme="https", netloc="x.com")
+    return urlunparse(parsed)
+
+
+def readwise_reader_url(raw: dict[str, Any]) -> str | None:
+    value = raw.get("url")
+    if not value:
+        return None
+    url = str(value)
+    if is_readwise_reader_url(url):
+        return url
+    return None
+
+
+def is_readwise_reader_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return parsed.netloc.lower() == "read.readwise.io" and parsed.path.startswith("/read/")
 
 
 def _source_type(raw: dict[str, Any], url: str | None) -> str:

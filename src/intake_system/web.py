@@ -12,6 +12,7 @@ from intake_system.config import IntakeConfig
 from intake_system.db import IntakeRepository, connect
 from intake_system.frontmatter import dumps, loads
 from intake_system.models import ClassifiedItem, ReviewDecision
+from intake_system.readwise import readwise_reader_url
 from intake_system.review import (
     clean_final_note,
     final_relative_path,
@@ -236,13 +237,14 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     primary_destination = str(classification.get("primary_destination") or classified.classification.primary_destination)
     sensitivity = str(classification.get("sensitivity") or classified.classification.sensitivity)
     source_url = item.source_url or ""
+    reader_url = readwise_reader_url(item.raw)
     return f"""<article>
   <div class="review-layout">
     <div class="reader">
       <div class="title-row">
         <div>
           <h2>{escape(item.title)}</h2>
-          {_source_link(source_url)}
+          {_source_links(source_url, reader_url)}
         </div>
         <div class="meta">{escape(item.source_type)} · {escape(item.source)}</div>
       </div>
@@ -327,10 +329,18 @@ def _decision_question(classified: ClassifiedItem) -> str:
     return "Should I create the note at the recommended destination?"
 
 
-def _source_link(source_url: str) -> str:
+def _source_links(source_url: str, reader_url: str | None) -> str:
+    original = _source_link(source_url, "Original Source")
+    if reader_url and reader_url != source_url:
+        return f'{original}<span class="source-separator">·</span>{_source_link(reader_url, "Readwise")}'
+    return original
+
+
+def _source_link(source_url: str, label: str | None = None) -> str:
     if not source_url:
         return '<span class="source-missing">No source URL</span>'
-    return f'<a href="{escape(source_url)}" target="_blank" rel="noreferrer">{escape(source_url)}</a>'
+    text = f"{label}: {source_url}" if label else source_url
+    return f'<a href="{escape(source_url)}" target="_blank" rel="noreferrer">{escape(text)}</a>'
 
 
 def _source_link_button(source_url: str) -> str:
@@ -460,6 +470,7 @@ article { padding:22px; }
 .title-row { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
 h2 { font-size:22px; line-height:1.2; margin:0 0 6px; letter-spacing:0; }
 a { color:#175cd3; }
+.source-separator { color:var(--muted); margin:0 7px; }
 .meta { color:var(--muted); white-space:nowrap; font-size:13px; }
 form { margin:18px 0; }
 .controls { display:grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap:12px; align-items:end; }

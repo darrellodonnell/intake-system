@@ -32,3 +32,18 @@ def test_normalize_readwise_failed_extraction_still_creates_metadata_item() -> N
 
     assert item.content_status == "metadata_only"
     assert item.content_text is None
+
+
+def test_normalize_readwise_prefers_original_source_url_over_reader_url() -> None:
+    item = normalize_readwise_item(
+        {
+            "id": "tweet-1",
+            "title": "A frontier without an ecosystem is not stable",
+            "url": "https://read.readwise.io/read/01kv3xb4jnfppd7smpnm9fejfa",
+            "source_url": "https://twitter.com/satyanadella/status/2066182223213293753/?rw_tt_thread=False",
+            "category": "tweet",
+        }
+    )
+
+    assert item.source_url == "https://x.com/satyanadella/status/2066182223213293753/?rw_tt_thread=False"
+    assert item.source_type == "x_twitter"

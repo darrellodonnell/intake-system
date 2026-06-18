@@ -10,12 +10,22 @@ from intake_system.config import DestinationConfig, IntakeConfig
 from intake_system.frontmatter import dumps, loads
 from intake_system.ids import slugify, utc_now_iso
 from intake_system.models import ClassifiedItem, ReviewDecision
+from intake_system.readwise import readwise_reader_url
 from intake_system.writer import MarkdownWriter, note_filename
 
 
 def review_frontmatter(classified: ClassifiedItem) -> dict:
     item = classified.record.item
     classification = classified.classification
+    source = {
+        "title": item.title,
+        "author": item.author,
+        "url": item.source_url,
+        "readwise_tags": item.readwise_tags,
+    }
+    reader_url = readwise_reader_url(item.raw)
+    if reader_url and reader_url != item.source_url:
+        source["readwise_url"] = reader_url
     return {
         "intake": {
             "item_id": classified.record.id,
@@ -25,12 +35,7 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
             "captured_at": item.captured_at.isoformat() if item.captured_at else None,
             "created_at": utc_now_iso(),
         },
-        "source": {
-            "title": item.title,
-            "author": item.author,
-            "url": item.source_url,
-            "readwise_tags": item.readwise_tags,
-        },
+        "source": source,
         "classification": {
             "primary_destination": classification.primary_destination,
             "destination_candidates": classification.destination_candidates,
@@ -193,4 +198,3 @@ def final_relative_path(classified: ClassifiedItem) -> str:
 
 def writer_for_destinations(destinations: dict[str, DestinationConfig]) -> MarkdownWriter:
     return MarkdownWriter({key: value.path for key, value in destinations.items()})
-
