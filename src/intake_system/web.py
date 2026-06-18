@@ -256,6 +256,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     sensitivity = str(classification.get("sensitivity") or classified.classification.sensitivity)
     source_url = item.source_url or ""
     reader_url = readwise_reader_url(item.raw)
+    source_preview = _source_frame(source_url)
     return f"""<article>
   <div class="review-layout">
     <div class="reader">
@@ -275,7 +276,6 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           {_render_article_body(body, omitted_sections={"Why This Was Saved", "Routing Recommendation", "Knowledge Base Recommendation"})}
         </div>
       </div>
-      {_source_frame(source_url)}
     </div>
     <aside class="decision">
       <h3>Where Does This Belong?</h3>
@@ -321,6 +321,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
       </form>
     </aside>
   </div>
+  {_lower_source_preview(source_preview)}
 </article>"""
 
 
@@ -365,6 +366,12 @@ def _source_frame(source_url: str) -> str:
   </div>
   <iframe src="{escape(source_url)}" loading="lazy" referrerpolicy="no-referrer"></iframe>
 </div>"""
+
+
+def _lower_source_preview(source_preview: str) -> str:
+    if not source_preview:
+        return ""
+    return f'<div class="source-lower">{source_preview}</div>'
 
 
 def _render_article_body(body: str, *, omitted_sections: set[str] | None = None) -> str:
@@ -461,7 +468,7 @@ def _destination_checkboxes(cfg: IntakeConfig, selected: list[str], recommended:
             continue
         badge = '<span class="recommended-badge">Recommended</span>' if key == recommended else ""
         rows.append(
-            f"""<label><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(KNOWLEDGE_BASE_LABELS[key])}</span>{badge}</label>"""
+            f"""<label class="kb-toggle"><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(KNOWLEDGE_BASE_LABELS[key])}</span>{badge}</label>"""
         )
     return "\n".join(rows)
 
@@ -515,6 +522,9 @@ nav { border-right:1px solid var(--line); background:var(--panel); overflow:auto
 .item.active { background:#fff; box-shadow:inset 3px 0 0 var(--accent); }
 section { overflow:auto; max-height:calc(100vh - 64px); }
 article { padding:22px; }
+.review-layout { display:grid; grid-template-columns:minmax(0, 1.35fr) minmax(320px, .65fr); gap:22px; align-items:start; }
+.reader, .decision { min-width:0; }
+.decision { border:1px solid var(--line); border-radius:8px; padding:16px; background:#fff; position:sticky; top:18px; }
 .title-row { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
 h2 { font-size:22px; line-height:1.2; margin:0 0 6px; letter-spacing:0; }
 a { color:#175cd3; }
@@ -532,13 +542,20 @@ textarea { resize:vertical; }
 .understanding { display:grid; gap:10px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fff; }
 .understanding h4 { margin:0; color:var(--ink); font-size:13px; letter-spacing:0; }
 .understanding textarea { background:#fbfcfd; }
-.destination-picker { display:grid; gap:8px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fbfcfd; }
+.destination-picker { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; }
 .destination-picker legend { color:var(--muted); font-size:12px; font-weight:700; padding:0 4px; }
-.destination-picker label { display:flex; align-items:center; gap:8px; color:var(--ink); font-weight:500; }
-.destination-picker input { width:16px; height:16px; }
-.recommended-badge { margin-left:auto; color:var(--accent); font-size:11px; font-weight:750; }
+.kb-toggle { position:relative; display:flex; min-height:42px; align-items:center; gap:8px; color:var(--ink); font-size:13px; font-weight:650; border:1px solid var(--line); border-radius:8px; padding:9px 10px; background:#fff; cursor:pointer; }
+.kb-toggle:hover { border-color:#7fbbb5; background:#f4fbfa; }
+.kb-toggle:has(input:checked) { border-color:var(--accent); background:#ecfdf9; box-shadow:inset 0 0 0 1px var(--accent); }
+.kb-toggle input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.kb-toggle span { position:relative; }
+.recommended-badge { position:relative; margin-left:auto; color:var(--accent); font-size:10px; font-weight:750; text-transform:uppercase; letter-spacing:0; }
 .buttons { display:flex; gap:10px; margin-top:14px; }
 .decision-buttons { align-items:center; flex-wrap:wrap; }
+.source-lower { margin-top:22px; }
+.source-lower:empty { display:none; }
+.source-preview { border-top:1px solid var(--line); padding-top:18px; }
+.source-preview iframe { width:100%; height:520px; border:1px solid var(--line); border-radius:8px; background:#fff; }
 .split { display:grid; grid-template-columns:minmax(260px, .42fr) 1fr; gap:18px; }
 h3 { font-size:14px; margin:0 0 10px; letter-spacing:0; }
 dl { margin:0; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
@@ -552,7 +569,8 @@ pre { margin:0; padding:14px; border:1px solid var(--line); border-radius:6px; b
   main { grid-template-columns:1fr; }
   nav { max-height:280px; border-right:0; border-bottom:1px solid var(--line); }
   section { max-height:none; }
-  .controls, .split { grid-template-columns:1fr; }
+  .review-layout, .controls, .split, .destination-picker { grid-template-columns:1fr; }
+  .decision { position:static; }
   .title-row { display:block; }
   .meta { margin-top:8px; }
 }
