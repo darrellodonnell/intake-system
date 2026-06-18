@@ -285,7 +285,6 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
         <strong>{escape(_destination_label(cfg, primary_destination))}</strong>
         <small>{escape(str(classification.get('confidence', '')))} confidence · {escape(sensitivity)}</small>
       </div>
-      <p class="why">{escape(str(classification.get('rationale', '')))}</p>
       <form method="post" action="/review/{classified.record.id}" class="decision-form">
         <input type="hidden" name="action" value="apply">
         <fieldset class="destination-picker">
