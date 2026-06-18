@@ -184,7 +184,7 @@ def _render_review_page(
 <body>
   <header>
     <div>
-      <h1>Intake Review</h1>
+      <h1><a href="/review">Intake Review</a></h1>
       <p>{len(pending)} pending</p>
     </div>
     <form method="post" action="/review/apply">
@@ -454,6 +454,8 @@ def _css() -> str:
 body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
 header { height:64px; display:flex; align-items:center; justify-content:space-between; padding:0 20px; border-bottom:1px solid var(--line); background:#fff; }
 h1 { font-size:18px; margin:0; letter-spacing:0; }
+h1 a { color:var(--ink); text-decoration:none; }
+h1 a:hover { text-decoration:underline; }
 header p { margin:3px 0 0; color:var(--muted); font-size:13px; }
 button { border:1px solid #0b5f59; background:var(--accent); color:#fff; height:34px; padding:0 12px; border-radius:6px; font-weight:650; cursor:pointer; }
 button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
