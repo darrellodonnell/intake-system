@@ -101,12 +101,19 @@ docker compose -f docker-compose.dev.yml run --rm intake review apply
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d intake-ui
+tailscale serve --bg --https 8087 8087
 ```
 
 Open:
 
 ```text
-http://minimini:8087/review
+https://minimini.quagga-chicken.ts.net:8087/review
 ```
 
 The UI reads the same staged Markdown notes and writes the same frontmatter that the CLI uses. Use `Save` to store a decision for later, or `Save + Apply` to create final notes immediately.
+
+Check the Tailscale Serve mapping:
+
+```bash
+tailscale serve status
+```

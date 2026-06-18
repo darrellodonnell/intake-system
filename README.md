@@ -44,9 +44,10 @@ Run the review UI:
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d intake-ui
+tailscale serve --bg --https 8087 8087
 ```
 
-Open `http://minimini:8087/review`.
+Open `https://minimini.quagga-chicken.ts.net:8087/review`.
 
 ## Configuration
 
