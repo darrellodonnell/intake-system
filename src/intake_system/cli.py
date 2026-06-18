@@ -106,7 +106,7 @@ def fixtures_load(
     raw_payload = json.loads(fixture.read_text())
     if not isinstance(raw_payload, list):
         raise typer.BadParameter("fixture must be a JSON array")
-    items = [normalize_readwise_item(raw) for raw in raw_payload]
+    items = [normalize_readwise_item(raw, source="fixture") for raw in raw_payload]
     with connect(cfg.database.dsn) as conn:
         repo = IntakeRepository(conn)
         run_id = repo.start_run("fixtures.load", {"fixture": str(fixture)})

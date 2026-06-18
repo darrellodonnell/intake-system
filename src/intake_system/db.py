@@ -130,6 +130,7 @@ class IntakeRepository:
             FROM intake.items i
             LEFT JOIN intake.classifications c ON c.item_id = i.id
             WHERE c.item_id IS NULL
+              AND i.source <> 'fixture'
             ORDER BY i.review_priority DESC, i.captured_at DESC NULLS LAST, i.id
             LIMIT %s
             """,
@@ -184,6 +185,7 @@ class IntakeRepository:
             JOIN intake.classifications c ON c.item_id = i.id
             LEFT JOIN intake.review_notes r ON r.item_id = i.id
             WHERE r.item_id IS NULL
+              AND i.source <> 'fixture'
             ORDER BY i.review_priority DESC, i.captured_at DESC NULLS LAST, i.id
             LIMIT %s
             """,
@@ -202,6 +204,7 @@ class IntakeRepository:
             JOIN intake.classifications c ON c.item_id = i.id
             JOIN intake.review_notes r ON r.item_id = i.id
             WHERE r.review_status = 'pending'
+              AND i.source <> 'fixture'
             ORDER BY i.review_priority DESC, i.captured_at DESC NULLS LAST, i.id
             LIMIT %s
             """,
@@ -219,8 +222,11 @@ class IntakeRepository:
             FROM intake.items i
             JOIN intake.classifications c ON c.item_id = i.id
             JOIN intake.review_notes r ON r.item_id = i.id
-            WHERE r.review_status = 'pending'
-               OR (r.review_status IN ('approved', 'corrected') AND r.final_path IS NULL)
+            WHERE (
+                r.review_status = 'pending'
+                OR (r.review_status IN ('approved', 'corrected') AND r.final_path IS NULL)
+              )
+              AND i.source <> 'fixture'
             ORDER BY i.review_priority DESC, i.captured_at DESC NULLS LAST, i.id
             LIMIT %s
             """,

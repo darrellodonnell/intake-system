@@ -21,9 +21,14 @@ def test_normalize_readwise_youtube_item() -> None:
     assert item.review_priority == 90
 
 
+def test_normalize_readwise_can_mark_fixture_source() -> None:
+    item = normalize_readwise_item({"id": "sample", "title": "Fixture"}, source="fixture")
+
+    assert item.source == "fixture"
+
+
 def test_normalize_readwise_failed_extraction_still_creates_metadata_item() -> None:
     item = normalize_readwise_item({"id": "xyz", "title": "Only Metadata", "url": "https://example.com"})
 
     assert item.content_status == "metadata_only"
     assert item.content_text is None
-

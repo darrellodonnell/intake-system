@@ -38,7 +38,7 @@ class ReadwiseClient:
                     break
 
 
-def normalize_readwise_item(raw: dict[str, Any]) -> SourceItem:
+def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") -> SourceItem:
     source_id = str(raw.get("id") or raw.get("document_id") or raw.get("url") or content_hash(raw))
     url = raw.get("url") or raw.get("source_url") or raw.get("site_url")
     source_type = _source_type(raw, url)
@@ -52,7 +52,7 @@ def normalize_readwise_item(raw: dict[str, Any]) -> SourceItem:
     content_text = _content_text(raw)
     content_status = "extracted" if content_text else "metadata_only"
     return SourceItem(
-        source="readwise",
+        source=source,
         source_id=source_id,
         source_type=source_type,
         title=str(title),
