@@ -272,7 +272,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           {_source_link_button(source_url)}
         </div>
         <div class="article-body">
-          {_render_article_body(body, omitted_sections={"Routing Recommendation", "Knowledge Base Recommendation"})}
+          {_render_article_body(body, omitted_sections={"Why This Was Saved", "Routing Recommendation", "Knowledge Base Recommendation"})}
         </div>
       </div>
       {_source_frame(source_url)}
@@ -446,7 +446,12 @@ def _understanding(frontmatter: dict[str, Any], classified: ClassifiedItem) -> d
         values["processing_plan"] = infer_processing_plan(classified.record.item, classified.classification)
     if not values.get("why_saved"):
         values["why_saved"] = classified.classification.rationale
+    values["why_saved"] = _knowledge_base_language(str(values.get("why_saved") or ""))
     return values
+
+
+def _knowledge_base_language(value: str) -> str:
+    return value.replace("destination signal", "knowledge base signal").replace("routing signal", "knowledge base signal")
 
 
 def _destination_checkboxes(cfg: IntakeConfig, selected: list[str], recommended: str) -> str:
