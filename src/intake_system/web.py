@@ -233,49 +233,161 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     actions = frontmatter.get("actions") or {}
     destination_values = review.get("approved_destinations") or []
     approved_actions = "\n".join(str(value) for value in actions.get("approved") or [])
+    primary_destination = str(classification.get("primary_destination") or classified.classification.primary_destination)
+    sensitivity = str(classification.get("sensitivity") or classified.classification.sensitivity)
+    source_url = item.source_url or ""
     return f"""<article>
-  <div class="title-row">
-    <div>
-      <h2>{escape(item.title)}</h2>
-      <a href="{escape(item.source_url or '#')}" target="_blank" rel="noreferrer">{escape(item.source_url or 'No source URL')}</a>
+  <div class="review-layout">
+    <div class="reader">
+      <div class="title-row">
+        <div>
+          <h2>{escape(item.title)}</h2>
+          {_source_link(source_url)}
+        </div>
+        <div class="meta">{escape(item.source_type)} · {escape(item.source)}</div>
+      </div>
+      <div class="article-card">
+        <div class="article-header">
+          <h3>Saved Item</h3>
+          {_source_link_button(source_url)}
+        </div>
+        <div class="article-body">
+          {_render_article_body(body)}
+        </div>
+      </div>
+      {_source_frame(source_url)}
     </div>
-    <div class="meta">{escape(item.source_type)} · {escape(item.source)}</div>
-  </div>
-  <form method="post" action="/review/{classified.record.id}">
-    <div class="controls">
-      <label>Status {_select('status', STATUS_OPTIONS, str(review.get('status', 'pending')))}</label>
-      <label>Sensitivity {_select('sensitivity', SENSITIVITY_OPTIONS, str(review.get('sensitivity', 'private')))}</label>
-      <label class="check"><input type="checkbox" name="remember_rule" value="true" {_checked(bool(review.get('remember_rule')))}> Remember rule</label>
-    </div>
-    <div class="destinations">
-      {_destination_checkboxes(cfg, destination_values)}
-    </div>
-    <label>Correction note
-      <textarea name="correction_note" rows="2">{escape(str(review.get('correction_note') or ''))}</textarea>
-    </label>
-    <label>Approved actions
-      <textarea name="approved_actions" rows="3">{escape(approved_actions)}</textarea>
-    </label>
-    <div class="buttons">
-      <button type="submit" name="action" value="save">Save</button>
-      <button type="submit" name="action" value="apply">Save + Apply</button>
-    </div>
-  </form>
-  <div class="split">
-    <div>
-      <h3>Recommendation</h3>
-      <dl>
-        <dt>Primary</dt><dd>{escape(str(classification.get('primary_destination', '')))}</dd>
-        <dt>Confidence</dt><dd>{escape(str(classification.get('confidence', '')))}</dd>
-        <dt>Rationale</dt><dd>{escape(str(classification.get('rationale', '')))}</dd>
-      </dl>
-    </div>
-    <div>
-      <h3>Staged Note</h3>
-      <pre>{escape(body)}</pre>
-    </div>
+    <aside class="decision">
+      <h3>Decision Needed</h3>
+      <p class="decision-question">{escape(_decision_question(classified))}</p>
+      <div class="recommendation">
+        <span>Recommended</span>
+        <strong>{escape(primary_destination)}</strong>
+        <small>{escape(str(classification.get('confidence', '')))} confidence · {escape(sensitivity)}</small>
+      </div>
+      <p class="why">{escape(str(classification.get('rationale', '')))}</p>
+      <form method="post" action="/review/{classified.record.id}" class="quick-action">
+        <input type="hidden" name="status" value="approved">
+        <input type="hidden" name="approved_destinations" value="{escape(primary_destination)}">
+        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+        <button type="submit" name="action" value="apply">Approve & Create Note</button>
+      </form>
+      <form method="post" action="/review/{classified.record.id}" class="route-action">
+        <input type="hidden" name="status" value="corrected">
+        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+        <label>Route somewhere else
+          {_destination_select(cfg, primary_destination)}
+        </label>
+        <button type="submit" name="action" value="apply">Use This Destination</button>
+      </form>
+      <form method="post" action="/review/{classified.record.id}" class="skip-action">
+        <input type="hidden" name="status" value="skipped">
+        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+        <button type="submit" name="action" value="apply">Skip</button>
+      </form>
+      <details>
+        <summary>Advanced correction</summary>
+        <form method="post" action="/review/{classified.record.id}">
+          <div class="controls">
+            <label>Status {_select('status', STATUS_OPTIONS, str(review.get('status', 'pending')))}</label>
+            <label>Sensitivity {_select('sensitivity', SENSITIVITY_OPTIONS, str(review.get('sensitivity', 'private')))}</label>
+            <label class="check"><input type="checkbox" name="remember_rule" value="true" {_checked(bool(review.get('remember_rule')))}> Remember rule</label>
+          </div>
+          <div class="destinations">
+            {_destination_checkboxes(cfg, destination_values)}
+          </div>
+          <label>Correction note
+            <textarea name="correction_note" rows="2">{escape(str(review.get('correction_note') or ''))}</textarea>
+          </label>
+          <label>Approved actions
+            <textarea name="approved_actions" rows="3">{escape(approved_actions)}</textarea>
+          </label>
+          <div class="buttons">
+            <button type="submit" name="action" value="save">Save</button>
+            <button type="submit" name="action" value="apply">Save + Apply</button>
+          </div>
+        </form>
+      </details>
+    </aside>
   </div>
 </article>"""
+
+
+def _decision_question(classified: ClassifiedItem) -> str:
+    classification = classified.classification
+    if classification.sensitivity == "confidential":
+        return "This looks sensitive. Should I create a private/confidential note at the recommended destination?"
+    if classification.primary_destination == "inbox" or classification.confidence < 0.6:
+        return "I do not have enough signal. Where should this be filed?"
+    if len(classification.destination_candidates) > 1:
+        return "Should I use the recommended destination, or is one of the alternate routes a better fit?"
+    return "Should I create the note at the recommended destination?"
+
+
+def _source_link(source_url: str) -> str:
+    if not source_url:
+        return '<span class="source-missing">No source URL</span>'
+    return f'<a href="{escape(source_url)}" target="_blank" rel="noreferrer">{escape(source_url)}</a>'
+
+
+def _source_link_button(source_url: str) -> str:
+    if not source_url:
+        return ""
+    return f'<a class="open-source" href="{escape(source_url)}" target="_blank" rel="noreferrer">Open Source</a>'
+
+
+def _source_frame(source_url: str) -> str:
+    if not source_url:
+        return ""
+    return f"""<div class="source-preview">
+  <div class="article-header">
+    <h3>Source Preview</h3>
+    <span>Some sites block embedded previews; use Open Source if this pane is blank.</span>
+  </div>
+  <iframe src="{escape(source_url)}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+</div>"""
+
+
+def _render_article_body(body: str) -> str:
+    lines = body.splitlines()
+    html: list[str] = []
+    in_list = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            if in_list:
+                html.append("</ul>")
+                in_list = False
+            continue
+        if line.startswith("#"):
+            if in_list:
+                html.append("</ul>")
+                in_list = False
+            level = min(len(line) - len(line.lstrip("#")), 4)
+            text = line.lstrip("#").strip()
+            html.append(f"<h{level}>{escape(text)}</h{level}>")
+            continue
+        if line.startswith("- "):
+            if not in_list:
+                html.append("<ul>")
+                in_list = True
+            html.append(f"<li>{escape(line[2:].strip())}</li>")
+            continue
+        if in_list:
+            html.append("</ul>")
+            in_list = False
+        html.append(f"<p>{escape(line)}</p>")
+    if in_list:
+        html.append("</ul>")
+    return "\n".join(html)
+
+
+def _destination_select(cfg: IntakeConfig, selected: str) -> str:
+    options = []
+    for key, destination in cfg.destinations.items():
+        attr = " selected" if key == selected else ""
+        options.append(f'<option value="{escape(key)}"{attr}>{escape(destination.label)}</option>')
+    return f'<select name="approved_destinations">{"".join(options)}</select>'
 
 
 def _destination_checkboxes(cfg: IntakeConfig, selected: list[str]) -> str:
