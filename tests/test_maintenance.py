@@ -1,5 +1,5 @@
 from intake_system.frontmatter import dumps, loads
-from intake_system.maintenance import repair_staged_markdown_text
+from intake_system.maintenance import repair_staged_extracted_context, repair_staged_markdown_text
 
 
 def test_repair_staged_markdown_text_updates_source_frontmatter_and_body() -> None:
@@ -23,3 +23,20 @@ def test_repair_staged_markdown_text_updates_source_frontmatter_and_body() -> No
     assert frontmatter["source"]["url"] == "https://x.com/satyanadella/status/2066182223213293753/?rw_tt_thread=False"
     assert frontmatter["source"]["readwise_url"] == "https://read.readwise.io/read/01kv3xb4jnfppd7smpnm9fejfa"
     assert "Source: https://x.com/satyanadella/status/2066182223213293753/?rw_tt_thread=False" in body
+
+
+def test_repair_staged_extracted_context_replaces_placeholder_context() -> None:
+    markdown = dumps(
+        {"source": {"title": "25 Claude Features"}},
+        "# 25 Claude Features\n\n## Extracted / Captured Context\n\nThis tweet contains no text.\n\n## Transcript / Source Reference\n\nKeep this section.",
+    )
+
+    repaired = repair_staged_extracted_context(
+        markdown,
+        content_text="Claude Projects might be the most underused power feature.\n\nProject Instructions are permanent.",
+    )
+
+    _, body = loads(repaired)
+    assert "This tweet contains no text." not in body
+    assert "Claude Projects might be the most underused power feature." in body
+    assert "## Transcript / Source Reference\n\nKeep this section." in body

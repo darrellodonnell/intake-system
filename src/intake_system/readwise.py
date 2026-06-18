@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html import unescape
+from html.parser import HTMLParser
 from typing import Any, Iterator
 from urllib.parse import urlparse, urlunparse
 
@@ -21,7 +23,7 @@ class ReadwiseClient:
         next_cursor = cursor
         with httpx.Client(timeout=30.0) as client:
             while True:
-                params: dict[str, Any] = {"pageSize": self.page_size}
+                params: dict[str, Any] = {"pageSize": self.page_size, "withHtmlContent": "true"}
                 if next_cursor:
                     params["pageCursor"] = next_cursor
                 response = client.get(
@@ -37,6 +39,17 @@ class ReadwiseClient:
                 yield items, next_cursor
                 if not next_cursor:
                     break
+
+    def get_raw_item(self, source_id: str) -> dict[str, Any] | None:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(
+                f"{self.base_url}/list/",
+                headers={"Authorization": f"Token {self.token}"},
+                params={"id": source_id, "withHtmlContent": "true"},
+            )
+            response.raise_for_status()
+            results = response.json().get("results") or []
+            return results[0] if results else None
 
 
 def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") -> SourceItem:
@@ -146,14 +159,59 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 
 def _content_text(raw: dict[str, Any]) -> str | None:
-    fields = [
-        raw.get("summary"),
-        raw.get("notes"),
-        raw.get("document_note"),
-        raw.get("excerpt"),
-    ]
+    html_text = _html_to_text(raw.get("html_content"))
+    if html_text:
+        fields = [html_text, raw.get("notes"), raw.get("document_note")]
+    else:
+        fields = [
+            raw.get("summary"),
+            raw.get("notes"),
+            raw.get("document_note"),
+            raw.get("excerpt"),
+        ]
     text = "\n\n".join(str(value).strip() for value in fields if str(value or "").strip())
     return text or None
+
+
+def _html_to_text(value: Any) -> str | None:
+    if not value:
+        return None
+    parser = _PlainTextHTMLParser()
+    parser.feed(str(value))
+    parser.close()
+    text = parser.text()
+    return text or None
+
+
+class _PlainTextHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.skipping = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self.skipping = True
+        if tag in {"p", "div", "section", "article", "br", "li", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self.skipping = False
+        if tag in {"p", "div", "section", "article", "li", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.skipping:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        lines = []
+        for raw_line in unescape("".join(self.parts)).splitlines():
+            line = " ".join(raw_line.split())
+            if line:
+                lines.append(line)
+        return "\n\n".join(lines)
 
 
 def _review_priority(source_type: str, raw: dict[str, Any]) -> int:

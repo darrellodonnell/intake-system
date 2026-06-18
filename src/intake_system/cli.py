@@ -10,7 +10,7 @@ import uvicorn
 from intake_system.classifier import classify_item
 from intake_system.config import ConfigError, load_active_context, load_config
 from intake_system.db import IntakeRepository, apply_migrations, connect, upsert_many
-from intake_system.maintenance import repair_readwise_source_urls
+from intake_system.maintenance import refresh_readwise_content, repair_readwise_source_urls
 from intake_system.readwise import ReadwiseClient
 from intake_system.readwise import normalize_readwise_item
 from intake_system.review import (
@@ -257,6 +257,30 @@ def maintenance_repair_source_urls(
     typer.echo(
         f"{mode} {result.updated_items} item(s), {result.updated_review_notes} review note(s), "
         f"{result.updated_staged_files} staged file(s); scanned {result.scanned}, "
+        f"missing staged files {result.missing_staged_files}."
+    )
+
+
+@maintenance_app.command("refresh-readwise-content")
+def maintenance_refresh_readwise_content(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    item_id: list[int] | None = typer.Option(None, "--item-id", help="Limit refresh to a specific intake item id."),
+    apply: bool = typer.Option(False, "--apply", help="Write refreshed content to DB and staged notes."),
+) -> None:
+    cfg = _load(_config_path(config))
+    client = ReadwiseClient(
+        base_url=cfg.readwise.base_url,
+        token=cfg.readwise.api_token,
+        page_size=cfg.readwise.page_size,
+    )
+    with connect(cfg.database.dsn) as conn:
+        result = refresh_readwise_content(conn, client, item_ids=item_id, dry_run=not apply)
+        if apply:
+            conn.commit()
+    mode = "Refreshed" if apply else "Would refresh"
+    typer.echo(
+        f"{mode} {result.updated_items} item(s), {result.updated_staged_files} staged file(s); "
+        f"scanned {result.scanned}, fetched {result.fetched}, no content {result.no_content}, "
         f"missing staged files {result.missing_staged_files}."
     )
 

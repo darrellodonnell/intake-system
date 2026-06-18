@@ -47,3 +47,22 @@ def test_normalize_readwise_prefers_original_source_url_over_reader_url() -> Non
 
     assert item.source_url == "https://x.com/satyanadella/status/2066182223213293753/?rw_tt_thread=False"
     assert item.source_type == "x_twitter"
+
+
+def test_normalize_readwise_uses_html_content_over_misleading_summary() -> None:
+    item = normalize_readwise_item(
+        {
+            "id": "tweet-article",
+            "title": "25 Claude Features",
+            "url": "https://read.readwise.io/read/abc",
+            "source_url": "https://twitter.com/example/status/123",
+            "category": "tweet",
+            "summary": "This tweet contains no text.",
+            "html_content": "<article><p>Claude Projects might be the most underused power feature.</p><p>Project Instructions are permanent.</p></article>",
+        }
+    )
+
+    assert item.content_status == "extracted"
+    assert "Claude Projects might be the most underused power feature." in item.content_text
+    assert "Project Instructions are permanent." in item.content_text
+    assert "This tweet contains no text." not in item.content_text
