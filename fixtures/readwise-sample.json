@@ -1,0 +1,36 @@
+[
+  {
+    "id": "sample-youtube-aos",
+    "title": "Systems Thinking for AI Teams",
+    "url": "https://www.youtube.com/watch?v=sample",
+    "author": "Example Creator",
+    "tags": {
+      "aos": {},
+      "learning": {}
+    },
+    "summary": "A practical discussion of systems thinking, feedback loops, and agentic workflows.",
+    "saved_at": "2026-06-17T12:00:00Z"
+  },
+  {
+    "id": "sample-linkedin-ayra",
+    "title": "David Treat on AI and Learning",
+    "url": "https://www.linkedin.com/posts/sample",
+    "author": "David Treat",
+    "tags": {
+      "ai": {}
+    },
+    "summary": "Notes on AI, learning systems, and organizational change.",
+    "saved_at": "2026-06-17T13:00:00Z"
+  },
+  {
+    "id": "sample-travel",
+    "title": "Living in Portugal for a Year",
+    "url": "https://example.com/living-in-portugal",
+    "author": "Example Travel",
+    "tags": {
+      "travel": {}
+    },
+    "saved_at": "2026-06-17T14:00:00Z"
+  }
+]
+

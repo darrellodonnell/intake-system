@@ -1,0 +1,14 @@
+services:
+  intake:
+    build: .
+    image: intake-system:dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      INTAKE_CONFIG: ${INTAKE_CONFIG:-config/intake.local.yaml}
+    volumes:
+      - ./config:/app/config:ro
+      - ./review:/app/review
+      - ./out:/app/out
+    command: ["--help"]

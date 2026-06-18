@@ -1,0 +1,135 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Iterator
+
+import httpx
+
+from intake_system.ids import content_hash
+from intake_system.models import SourceItem
+from intake_system.security import redact_sensitive
+
+
+class ReadwiseClient:
+    def __init__(self, *, base_url: str, token: str, page_size: int = 100):
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.page_size = page_size
+
+    def iter_items(self, *, cursor: str | None = None) -> Iterator[tuple[list[SourceItem], str | None]]:
+        next_cursor = cursor
+        with httpx.Client(timeout=30.0) as client:
+            while True:
+                params: dict[str, Any] = {"pageSize": self.page_size}
+                if next_cursor:
+                    params["pageCursor"] = next_cursor
+                response = client.get(
+                    f"{self.base_url}/list/",
+                    headers={"Authorization": f"Token {self.token}"},
+                    params=params,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                raw_results = payload.get("results", [])
+                items = [normalize_readwise_item(raw) for raw in raw_results]
+                next_cursor = payload.get("nextPageCursor")
+                yield items, next_cursor
+                if not next_cursor:
+                    break
+
+
+def normalize_readwise_item(raw: dict[str, Any]) -> SourceItem:
+    source_id = str(raw.get("id") or raw.get("document_id") or raw.get("url") or content_hash(raw))
+    url = raw.get("url") or raw.get("source_url") or raw.get("site_url")
+    source_type = _source_type(raw, url)
+    title = raw.get("title") or raw.get("document_title") or url or f"Readwise item {source_id}"
+    captured_at = _parse_datetime(
+        raw.get("saved_at")
+        or raw.get("created_at")
+        or raw.get("updated_at")
+        or raw.get("last_moved_at")
+    )
+    content_text = _content_text(raw)
+    content_status = "extracted" if content_text else "metadata_only"
+    return SourceItem(
+        source="readwise",
+        source_id=source_id,
+        source_type=source_type,
+        title=str(title),
+        author=raw.get("author") or raw.get("site_name"),
+        source_url=url,
+        captured_at=captured_at,
+        readwise_tags=_tags(raw.get("tags")),
+        raw=redact_sensitive(raw),
+        content_text=content_text,
+        content_status=content_status,
+        review_priority=_review_priority(source_type, raw),
+    )
+
+
+def _source_type(raw: dict[str, Any], url: str | None) -> str:
+    category = str(raw.get("category") or raw.get("source_type") or "").lower()
+    if category in {"article", "pdf", "epub", "email", "rss", "tweet", "video"}:
+        if category == "video":
+            return "youtube" if url and "youtu" in url else "video"
+        return "x_twitter" if category == "tweet" else category
+    value = f"{url or ''} {raw.get('site_name') or ''}".lower()
+    if "youtube.com" in value or "youtu.be" in value:
+        return "youtube"
+    if "linkedin.com" in value:
+        return "linkedin"
+    if "twitter.com" in value or "x.com" in value:
+        return "x_twitter"
+    if raw.get("document_note") or raw.get("notes"):
+        return "document"
+    return "article" if url else "unknown"
+
+
+def _tags(raw_tags: Any) -> list[str]:
+    if raw_tags is None:
+        return []
+    if isinstance(raw_tags, list):
+        values = raw_tags
+    elif isinstance(raw_tags, dict):
+        values = list(raw_tags.keys())
+    else:
+        values = [raw_tags]
+    return sorted({str(value).strip() for value in values if str(value).strip()})
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _content_text(raw: dict[str, Any]) -> str | None:
+    fields = [
+        raw.get("summary"),
+        raw.get("notes"),
+        raw.get("document_note"),
+        raw.get("excerpt"),
+    ]
+    text = "\n\n".join(str(value).strip() for value in fields if str(value or "").strip())
+    return text or None
+
+
+def _review_priority(source_type: str, raw: dict[str, Any]) -> int:
+    priority = {
+        "linkedin": 85,
+        "youtube": 80,
+        "x_twitter": 75,
+        "document": 70,
+        "article": 60,
+        "pdf": 60,
+    }.get(source_type, 50)
+    tags = " ".join(_tags(raw.get("tags"))).lower()
+    if any(term in tags for term in ("ayra", "client", "aos", "agent")):
+        priority += 10
+    return min(priority, 100)

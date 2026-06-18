@@ -1,0 +1,75 @@
+database:
+  dsn_env: INTAKE_DATABASE_DSN
+  schema: intake
+
+readwise:
+  api_token_env: READWISE_API_TOKEN
+  base_url: https://readwise.io/api/v3
+  page_size: 100
+
+review:
+  staging_root: ./review/staging
+  daily_root: ./review/daily
+  batch_size: 25
+  privacy: private
+
+final_notes:
+  default_root: ./out/knowledge
+
+classifier:
+  mode: rules
+  confidence_threshold: 0.75
+
+active_context:
+  interests_file: ./config/active-context.example.yaml
+
+destinations:
+  personal:
+    label: Personal
+    path: ./out/knowledge/personal
+    private: true
+  professional:
+    label: Professional
+    path: ./out/knowledge/professional
+    private: true
+  continuum_loop:
+    label: Continuum Loop
+    path: ./out/knowledge/continuum-loop
+    private: true
+  aos:
+    label: AOS / agentic systems
+    path: ./out/knowledge/aos
+    private: true
+  general_business:
+    label: General business learning
+    path: ./out/knowledge/general-business
+    private: true
+  travel:
+    label: Travel / living somewhere
+    path: ./out/knowledge/travel
+    private: true
+  ayra_team_safe:
+    label: Ayra team-safe knowledge
+    path: ./out/knowledge/ayra/team-safe
+    private: false
+  ayra_private:
+    label: Ayra private working notes
+    path: ./out/knowledge/ayra/private
+    private: true
+  ayra_corporate_internal:
+    label: Ayra corporate/internal
+    path: ./out/knowledge/ayra/corporate-internal
+    private: true
+  ayra_confidential:
+    label: Ayra confidential/member-specific
+    path: ./out/knowledge/ayra/confidential
+    private: true
+  client_specific:
+    label: Client-specific
+    path: ./out/knowledge/clients
+    private: true
+  inbox:
+    label: Inbox / needs review
+    path: ./out/knowledge/inbox
+    private: true
+
