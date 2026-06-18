@@ -316,7 +316,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           </label>
         </details>
         <div class="buttons decision-buttons">
-          <button type="submit" name="status" value="approved">Add to Selected Knowledge Bases</button>
+          <button type="submit" name="status" value="approved">File This</button>
           <button type="submit" name="status" value="skipped" class="secondary">Skip Item</button>
         </div>
       </form>
