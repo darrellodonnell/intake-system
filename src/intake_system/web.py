@@ -270,6 +270,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
         <input type="hidden" name="status" value="approved">
         <input type="hidden" name="approved_destinations" value="{escape(primary_destination)}">
         <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+        {_thinking_box(review)}
         <button type="submit" name="action" value="apply">Approve & Create Note</button>
       </form>
       <form method="post" action="/review/{classified.record.id}" class="route-action">
@@ -278,11 +279,13 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
         <label>Route somewhere else
           {_destination_select(cfg, primary_destination)}
         </label>
+        {_thinking_box(review)}
         <button type="submit" name="action" value="apply">Use This Destination</button>
       </form>
       <form method="post" action="/review/{classified.record.id}" class="skip-action">
         <input type="hidden" name="status" value="skipped">
         <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+        {_thinking_box(review)}
         <button type="submit" name="action" value="apply">Skip</button>
       </form>
       <details>
@@ -390,6 +393,13 @@ def _destination_select(cfg: IntakeConfig, selected: str) -> str:
     return f'<select name="approved_destinations">{"".join(options)}</select>'
 
 
+def _thinking_box(review: dict[str, Any]) -> str:
+    value = str(review.get("correction_note") or "")
+    return f"""<label class="thinking">My thinking
+  <textarea name="correction_note" rows="3" placeholder="Optional: why this is right, wrong, sensitive, or worth remembering.">{escape(value)}</textarea>
+</label>"""
+
+
 def _destination_checkboxes(cfg: IntakeConfig, selected: list[str]) -> str:
     selected_set = set(selected)
     rows = []
@@ -458,6 +468,8 @@ select, textarea { width:100%; margin-top:5px; border:1px solid var(--line); bor
 textarea { resize:vertical; }
 .check { display:flex; align-items:center; gap:8px; color:var(--ink); height:34px; }
 .check input { width:16px; height:16px; }
+.thinking { margin:12px 0; color:var(--ink); }
+.thinking textarea { min-height:78px; background:#fbfcfd; }
 .destinations { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:8px 12px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fbfcfd; }
 .destinations label { color:var(--ink); font-weight:500; }
 .buttons { display:flex; gap:10px; margin-top:14px; }
