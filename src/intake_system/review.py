@@ -48,7 +48,7 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
         },
         "review": {
             "status": "pending",
-            "approved_destinations": classification.destination_candidates,
+            "approved_destinations": [classification.primary_destination],
             "sensitivity": classification.sensitivity,
             "remember_rule": False,
             "correction_note": None,

@@ -21,7 +21,6 @@ from intake_system.review import (
 )
 
 
-STATUS_OPTIONS = ("pending", "approved", "corrected", "skipped")
 SENSITIVITY_OPTIONS = ("private", "confidential", "team_safe")
 
 
@@ -195,7 +194,7 @@ def _render_review_page(
   {_message(message)}
   <main>
     <nav aria-label="Pending review items">
-      {_render_list(pending, selected)}
+      {_render_list(cfg, pending, selected)}
     </nav>
     <section>
       {detail}
@@ -205,7 +204,7 @@ def _render_review_page(
 </html>"""
 
 
-def _render_list(pending: list[ClassifiedItem], selected: ClassifiedItem | None) -> str:
+def _render_list(cfg: IntakeConfig, pending: list[ClassifiedItem], selected: ClassifiedItem | None) -> str:
     if not pending:
         return '<div class="empty">No pending items</div>'
     selected_id = selected.record.id if selected else None
@@ -217,7 +216,7 @@ def _render_list(pending: list[ClassifiedItem], selected: ClassifiedItem | None)
         rows.append(
             f"""<a class="item{active}" href="/review?item_id={classified.record.id}">
   <strong>{escape(item.title)}</strong>
-  <span>{escape(c.primary_destination)} · {c.confidence:.2f} · {escape(c.sensitivity)}</span>
+  <span>{escape(_destination_label(cfg, c.primary_destination))} · {c.confidence:.2f} · {escape(c.sensitivity)}</span>
 </a>"""
         )
     return "\n".join(rows)
@@ -232,9 +231,9 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     classification = frontmatter.get("classification") or {}
     review = frontmatter.get("review") or {}
     actions = frontmatter.get("actions") or {}
-    destination_values = review.get("approved_destinations") or []
-    approved_actions = "\n".join(str(value) for value in actions.get("approved") or [])
     primary_destination = str(classification.get("primary_destination") or classified.classification.primary_destination)
+    destination_values = _selected_destination_values(review, primary_destination)
+    approved_actions = "\n".join(str(value) for value in actions.get("approved") or [])
     sensitivity = str(classification.get("sensitivity") or classified.classification.sensitivity)
     source_url = item.source_url or ""
     reader_url = readwise_reader_url(item.raw)
@@ -260,59 +259,36 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
       {_source_frame(source_url)}
     </div>
     <aside class="decision">
-      <h3>Decision Needed</h3>
+      <h3>Where Does This Belong?</h3>
       <p class="decision-question">{escape(_decision_question(classified))}</p>
       <div class="recommendation">
-        <span>Recommended</span>
-        <strong>{escape(primary_destination)}</strong>
+        <span>Recommended knowledge base</span>
+        <strong>{escape(_destination_label(cfg, primary_destination))}</strong>
         <small>{escape(str(classification.get('confidence', '')))} confidence · {escape(sensitivity)}</small>
       </div>
       <p class="why">{escape(str(classification.get('rationale', '')))}</p>
-      <form method="post" action="/review/{classified.record.id}" class="quick-action">
-        <input type="hidden" name="status" value="approved">
-        <input type="hidden" name="approved_destinations" value="{escape(primary_destination)}">
-        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
+      <form method="post" action="/review/{classified.record.id}" class="decision-form">
+        <input type="hidden" name="action" value="apply">
+        <fieldset class="destination-picker">
+          <legend>Knowledge bases</legend>
+          {_destination_checkboxes(cfg, destination_values, primary_destination)}
+        </fieldset>
         {_thinking_box(review)}
-        <button type="submit" name="action" value="apply">Approve & Create Note</button>
-      </form>
-      <form method="post" action="/review/{classified.record.id}" class="route-action">
-        <input type="hidden" name="status" value="corrected">
-        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
-        <label>Route somewhere else
-          {_destination_select(cfg, primary_destination)}
-        </label>
-        {_thinking_box(review)}
-        <button type="submit" name="action" value="apply">Use This Destination</button>
-      </form>
-      <form method="post" action="/review/{classified.record.id}" class="skip-action">
-        <input type="hidden" name="status" value="skipped">
-        <input type="hidden" name="sensitivity" value="{escape(sensitivity)}">
-        {_thinking_box(review)}
-        <button type="submit" name="action" value="apply">Skip</button>
-      </form>
-      <details>
-        <summary>Advanced correction</summary>
-        <form method="post" action="/review/{classified.record.id}">
+        <details>
+          <summary>More options</summary>
           <div class="controls">
-            <label>Status {_select('status', STATUS_OPTIONS, str(review.get('status', 'pending')))}</label>
-            <label>Sensitivity {_select('sensitivity', SENSITIVITY_OPTIONS, str(review.get('sensitivity', 'private')))}</label>
-            <label class="check"><input type="checkbox" name="remember_rule" value="true" {_checked(bool(review.get('remember_rule')))}> Remember rule</label>
+            <label>Sensitivity {_select('sensitivity', SENSITIVITY_OPTIONS, str(review.get('sensitivity', sensitivity)))}</label>
+            <label class="check"><input type="checkbox" name="remember_rule" value="true" {_checked(bool(review.get('remember_rule')))}> Remember this decision</label>
           </div>
-          <div class="destinations">
-            {_destination_checkboxes(cfg, destination_values)}
-          </div>
-          <label>Correction note
-            <textarea name="correction_note" rows="2">{escape(str(review.get('correction_note') or ''))}</textarea>
-          </label>
           <label>Approved actions
             <textarea name="approved_actions" rows="3">{escape(approved_actions)}</textarea>
           </label>
-          <div class="buttons">
-            <button type="submit" name="action" value="save">Save</button>
-            <button type="submit" name="action" value="apply">Save + Apply</button>
-          </div>
-        </form>
-      </details>
+        </details>
+        <div class="buttons decision-buttons">
+          <button type="submit" name="status" value="approved">Add to Selected Knowledge Bases</button>
+          <button type="submit" name="status" value="skipped" class="secondary">Skip Item</button>
+        </div>
+      </form>
     </aside>
   </div>
 </article>"""
@@ -321,12 +297,12 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
 def _decision_question(classified: ClassifiedItem) -> str:
     classification = classified.classification
     if classification.sensitivity == "confidential":
-        return "This looks sensitive. Should I create a private/confidential note at the recommended destination?"
+        return "This looks sensitive. Should it enter a private/confidential knowledge base?"
     if classification.primary_destination == "inbox" or classification.confidence < 0.6:
-        return "I do not have enough signal. Where should this be filed?"
+        return "I do not have enough signal. Which knowledge base should receive it?"
     if len(classification.destination_candidates) > 1:
-        return "Should I use the recommended destination, or is one of the alternate routes a better fit?"
-    return "Should I create the note at the recommended destination?"
+        return "Should it enter the recommended knowledge base, or another base as well?"
+    return "Should it enter the recommended knowledge base?"
 
 
 def _source_links(source_url: str, reader_url: str | None) -> str:
@@ -395,14 +371,6 @@ def _render_article_body(body: str) -> str:
     return "\n".join(html)
 
 
-def _destination_select(cfg: IntakeConfig, selected: str) -> str:
-    options = []
-    for key, destination in cfg.destinations.items():
-        attr = " selected" if key == selected else ""
-        options.append(f'<option value="{escape(key)}"{attr}>{escape(destination.label)}</option>')
-    return f'<select name="approved_destinations">{"".join(options)}</select>'
-
-
 def _thinking_box(review: dict[str, Any]) -> str:
     value = str(review.get("correction_note") or "")
     return f"""<label class="thinking">My thinking
@@ -410,12 +378,25 @@ def _thinking_box(review: dict[str, Any]) -> str:
 </label>"""
 
 
-def _destination_checkboxes(cfg: IntakeConfig, selected: list[str]) -> str:
+def _selected_destination_values(review: dict[str, Any], primary_destination: str) -> list[str]:
+    values = [str(value) for value in review.get("approved_destinations") or [] if str(value)]
+    if str(review.get("status") or "pending") == "pending":
+        return [primary_destination]
+    return values or [primary_destination]
+
+
+def _destination_label(cfg: IntakeConfig, key: str) -> str:
+    destination = cfg.destinations.get(key)
+    return destination.label if destination else key
+
+
+def _destination_checkboxes(cfg: IntakeConfig, selected: list[str], recommended: str) -> str:
     selected_set = set(selected)
     rows = []
     for key, destination in cfg.destinations.items():
+        badge = '<span class="recommended-badge">Recommended</span>' if key == recommended else ""
         rows.append(
-            f"""<label><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> {escape(destination.label)}</label>"""
+            f"""<label><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(destination.label)}</span>{badge}</label>"""
         )
     return "\n".join(rows)
 
@@ -458,7 +439,7 @@ header { height:64px; display:flex; align-items:center; justify-content:space-be
 h1 { font-size:18px; margin:0; letter-spacing:0; }
 header p { margin:3px 0 0; color:var(--muted); font-size:13px; }
 button { border:1px solid #0b5f59; background:var(--accent); color:#fff; height:34px; padding:0 12px; border-radius:6px; font-weight:650; cursor:pointer; }
-button[value="save"] { background:#fff; color:var(--ink); border-color:var(--line); }
+button.secondary { background:#fff; color:var(--ink); border-color:var(--line); }
 main { display:grid; grid-template-columns:minmax(280px, 360px) 1fr; min-height:calc(100vh - 64px); }
 nav { border-right:1px solid var(--line); background:var(--panel); overflow:auto; max-height:calc(100vh - 64px); }
 .item { display:block; padding:12px 14px; border-bottom:1px solid var(--line); color:var(--ink); text-decoration:none; }
@@ -481,9 +462,13 @@ textarea { resize:vertical; }
 .check input { width:16px; height:16px; }
 .thinking { margin:12px 0; color:var(--ink); }
 .thinking textarea { min-height:78px; background:#fbfcfd; }
-.destinations { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:8px 12px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fbfcfd; }
-.destinations label { color:var(--ink); font-weight:500; }
+.destination-picker { display:grid; gap:8px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fbfcfd; }
+.destination-picker legend { color:var(--muted); font-size:12px; font-weight:700; padding:0 4px; }
+.destination-picker label { display:flex; align-items:center; gap:8px; color:var(--ink); font-weight:500; }
+.destination-picker input { width:16px; height:16px; }
+.recommended-badge { margin-left:auto; color:var(--accent); font-size:11px; font-weight:750; }
 .buttons { display:flex; gap:10px; margin-top:14px; }
+.decision-buttons { align-items:center; flex-wrap:wrap; }
 .split { display:grid; grid-template-columns:minmax(260px, .42fr) 1fr; gap:18px; }
 h3 { font-size:14px; margin:0 0 10px; letter-spacing:0; }
 dl { margin:0; border:1px solid var(--line); border-radius:6px; overflow:hidden; }

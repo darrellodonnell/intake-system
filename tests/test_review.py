@@ -63,6 +63,7 @@ def test_stage_review_note_contains_review_frontmatter(tmp_path: Path) -> None:
 
     assert path.exists()
     assert frontmatter["review"]["status"] == "pending"
+    assert frontmatter["review"]["approved_destinations"] == ["aos"]
     assert frontmatter["classification"]["destination_candidates"] == ["aos", "general_business"]
     assert "Transcript / Source Reference" in path.read_text()
 
@@ -103,4 +104,3 @@ def test_clean_final_note_omits_review_metadata() -> None:
 
     assert "review:" not in note
     assert "Short summary." in note
-
