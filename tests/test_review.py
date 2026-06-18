@@ -63,8 +63,11 @@ def test_stage_review_note_contains_review_frontmatter(tmp_path: Path) -> None:
 
     assert path.exists()
     assert frontmatter["review"]["status"] == "pending"
-    assert frontmatter["review"]["approved_destinations"] == ["aos"]
+    assert frontmatter["review"]["approved_destinations"] == ["professional"]
     assert frontmatter["classification"]["destination_candidates"] == ["aos", "general_business"]
+    assert frontmatter["understanding"]["material_type"] == "video"
+    assert "Transcribe and extract for video/audio" in frontmatter["understanding"]["processing_plan"]
+    assert frontmatter["understanding"]["why_saved"] == "AOS terminology detected."
     assert "Transcript / Source Reference" in path.read_text()
 
 
@@ -84,7 +87,7 @@ def test_parse_review_decision_accepts_frontmatter_edits() -> None:
     _, decision = parse_review_decision(dumps(frontmatter, "# Body"))
 
     assert decision.status == "corrected"
-    assert decision.destinations == ["general_business"]
+    assert decision.destinations == ["professional"]
     assert decision.remember_rule is True
 
 
@@ -93,7 +96,7 @@ def test_clean_final_note_omits_review_metadata() -> None:
         dumps(
             {
                 "intake": {"item_id": 7},
-                "review": {"status": "approved", "approved_destinations": ["aos"], "sensitivity": "private"},
+                "review": {"status": "approved", "approved_destinations": ["professional"], "sensitivity": "private"},
                 "actions": {"approved": []},
             },
             "# Body",

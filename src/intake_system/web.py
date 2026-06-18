@@ -11,6 +11,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from intake_system.config import IntakeConfig
 from intake_system.db import IntakeRepository, connect
 from intake_system.frontmatter import dumps, loads
+from intake_system.knowledge import (
+    KNOWLEDGE_BASE_KEYS,
+    KNOWLEDGE_BASE_LABELS,
+    MATERIAL_TYPES,
+    canonical_knowledge_base,
+    canonical_knowledge_bases,
+    infer_material_type,
+    infer_processing_plan,
+)
 from intake_system.models import ClassifiedItem, ReviewDecision
 from intake_system.readwise import readwise_reader_url
 from intake_system.review import (
@@ -98,15 +107,21 @@ def update_frontmatter_from_form(frontmatter: dict[str, Any], form: dict[str, li
     updated = dict(frontmatter)
     review = dict(updated.get("review") or {})
     actions = dict(updated.get("actions") or {})
-    destinations = form.get("approved_destinations") or []
+    understanding = dict(updated.get("understanding") or {})
+    destinations = canonical_knowledge_bases(form.get("approved_destinations") or [])
     approved_actions = _first(form, "approved_actions", "")
+    processing_plan = _first(form, "processing_plan", "")
     review["status"] = _first(form, "status", review.get("status", "pending"))
     review["approved_destinations"] = destinations
     review["sensitivity"] = _first(form, "sensitivity", review.get("sensitivity", "private"))
     review["remember_rule"] = _first(form, "remember_rule", "") == "true"
     review["correction_note"] = _first(form, "correction_note", "").strip() or None
+    understanding["material_type"] = _first(form, "material_type", understanding.get("material_type", "")).strip()
+    understanding["processing_plan"] = [line.strip() for line in processing_plan.splitlines() if line.strip()]
+    understanding["why_saved"] = _first(form, "why_saved", understanding.get("why_saved", "")).strip()
     actions["approved"] = [line.strip() for line in approved_actions.splitlines() if line.strip()]
     updated["review"] = review
+    updated["understanding"] = understanding
     updated["actions"] = actions
     return updated
 
@@ -231,9 +246,13 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     classification = frontmatter.get("classification") or {}
     review = frontmatter.get("review") or {}
     actions = frontmatter.get("actions") or {}
-    primary_destination = str(classification.get("primary_destination") or classified.classification.primary_destination)
+    understanding = _understanding(frontmatter, classified)
+    primary_destination = canonical_knowledge_base(
+        str(classification.get("primary_destination") or classified.classification.primary_destination)
+    )
     destination_values = _selected_destination_values(review, primary_destination)
     approved_actions = "\n".join(str(value) for value in actions.get("approved") or [])
+    processing_plan = "\n".join(str(value) for value in understanding.get("processing_plan") or [])
     sensitivity = str(classification.get("sensitivity") or classified.classification.sensitivity)
     source_url = item.source_url or ""
     reader_url = readwise_reader_url(item.raw)
@@ -253,7 +272,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           {_source_link_button(source_url)}
         </div>
         <div class="article-body">
-          {_render_article_body(body, omitted_sections={"Routing Recommendation"})}
+          {_render_article_body(body, omitted_sections={"Routing Recommendation", "Knowledge Base Recommendation"})}
         </div>
       </div>
       {_source_frame(source_url)}
@@ -273,6 +292,18 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           <legend>Knowledge bases</legend>
           {_destination_checkboxes(cfg, destination_values, primary_destination)}
         </fieldset>
+        <div class="understanding">
+          <h4>System thinks</h4>
+          <label>What is it?
+            {_select('material_type', MATERIAL_TYPES, str(understanding.get('material_type') or 'article'))}
+          </label>
+          <label>How should it be processed?
+            <textarea name="processing_plan" rows="4">{escape(processing_plan)}</textarea>
+          </label>
+          <label>Why saved?
+            <textarea name="why_saved" rows="3">{escape(str(understanding.get('why_saved') or ''))}</textarea>
+          </label>
+        </div>
         {_thinking_box(review)}
         <details>
           <summary>More options</summary>
@@ -298,7 +329,7 @@ def _decision_question(classified: ClassifiedItem) -> str:
     classification = classified.classification
     if classification.sensitivity == "confidential":
         return "This looks sensitive. Should it enter a private/confidential knowledge base?"
-    if classification.primary_destination == "inbox" or classification.confidence < 0.6:
+    if classification.confidence < 0.6:
         return "I do not have enough signal. Which knowledge base should receive it?"
     if len(classification.destination_candidates) > 1:
         return "Should it enter the recommended knowledge base, or another base as well?"
@@ -396,24 +427,37 @@ def _thinking_box(review: dict[str, Any]) -> str:
 
 
 def _selected_destination_values(review: dict[str, Any], primary_destination: str) -> list[str]:
-    values = [str(value) for value in review.get("approved_destinations") or [] if str(value)]
+    values = canonical_knowledge_bases([str(value) for value in review.get("approved_destinations") or [] if str(value)])
     if str(review.get("status") or "pending") == "pending":
-        return [primary_destination]
+        return values or [primary_destination]
     return values or [primary_destination]
 
 
 def _destination_label(cfg: IntakeConfig, key: str) -> str:
-    destination = cfg.destinations.get(key)
-    return destination.label if destination else key
+    canonical = canonical_knowledge_base(key)
+    return KNOWLEDGE_BASE_LABELS.get(canonical, canonical)
+
+
+def _understanding(frontmatter: dict[str, Any], classified: ClassifiedItem) -> dict[str, Any]:
+    values = dict(frontmatter.get("understanding") or {})
+    if not values.get("material_type"):
+        values["material_type"] = infer_material_type(classified.record.item, classified.classification)
+    if not values.get("processing_plan"):
+        values["processing_plan"] = infer_processing_plan(classified.record.item, classified.classification)
+    if not values.get("why_saved"):
+        values["why_saved"] = classified.classification.rationale
+    return values
 
 
 def _destination_checkboxes(cfg: IntakeConfig, selected: list[str], recommended: str) -> str:
     selected_set = set(selected)
     rows = []
-    for key, destination in cfg.destinations.items():
+    for key in KNOWLEDGE_BASE_KEYS:
+        if key not in cfg.destinations:
+            continue
         badge = '<span class="recommended-badge">Recommended</span>' if key == recommended else ""
         rows.append(
-            f"""<label><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(destination.label)}</span>{badge}</label>"""
+            f"""<label><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(KNOWLEDGE_BASE_LABELS[key])}</span>{badge}</label>"""
         )
     return "\n".join(rows)
 
@@ -481,6 +525,9 @@ textarea { resize:vertical; }
 .check input { width:16px; height:16px; }
 .thinking { margin:12px 0; color:var(--ink); }
 .thinking textarea { min-height:78px; background:#fbfcfd; }
+.understanding { display:grid; gap:10px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+.understanding h4 { margin:0; color:var(--ink); font-size:13px; letter-spacing:0; }
+.understanding textarea { background:#fbfcfd; }
 .destination-picker { display:grid; gap:8px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fbfcfd; }
 .destination-picker legend { color:var(--muted); font-size:12px; font-weight:700; padding:0 4px; }
 .destination-picker label { display:flex; align-items:center; gap:8px; color:var(--ink); font-weight:500; }

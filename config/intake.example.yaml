@@ -32,44 +32,11 @@ destinations:
     label: Professional
     path: ./out/knowledge/professional
     private: true
-  continuum_loop:
-    label: Continuum Loop
-    path: ./out/knowledge/continuum-loop
-    private: true
-  aos:
-    label: AOS / agentic systems
-    path: ./out/knowledge/aos
-    private: true
-  general_business:
-    label: General business learning
-    path: ./out/knowledge/general-business
-    private: true
-  travel:
-    label: Travel / living somewhere
-    path: ./out/knowledge/travel
-    private: true
-  ayra_team_safe:
-    label: Ayra team-safe knowledge
-    path: ./out/knowledge/ayra/team-safe
-    private: false
-  ayra_private:
-    label: Ayra private working notes
-    path: ./out/knowledge/ayra/private
-    private: true
   ayra_corporate_internal:
-    label: Ayra corporate/internal
+    label: Ayra Corporate
     path: ./out/knowledge/ayra/corporate-internal
     private: true
   ayra_confidential:
-    label: Ayra confidential/member-specific
+    label: Ayra Confidential
     path: ./out/knowledge/ayra/confidential
     private: true
-  client_specific:
-    label: Client-specific
-    path: ./out/knowledge/clients
-    private: true
-  inbox:
-    label: Inbox / needs review
-    path: ./out/knowledge/inbox
-    private: true
-

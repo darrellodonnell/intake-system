@@ -10,6 +10,7 @@ def test_update_frontmatter_from_form_sets_review_decision() -> None:
             "remember_rule": False,
             "correction_note": None,
         },
+        "understanding": {},
         "actions": {"approved": []},
     }
     form = {
@@ -18,16 +19,22 @@ def test_update_frontmatter_from_form_sets_review_decision() -> None:
         "sensitivity": ["confidential"],
         "remember_rule": ["true"],
         "correction_note": ["AOS architecture reference."],
+        "material_type": ["article"],
+        "processing_plan": ["Summarize\nExtract claims/insights"],
+        "why_saved": ["AOS architecture signal."],
         "approved_actions": ["Create a follow-up note.\nAdd to digest."],
     }
 
     updated = update_frontmatter_from_form(frontmatter, form)
 
     assert updated["review"]["status"] == "corrected"
-    assert updated["review"]["approved_destinations"] == ["aos", "general_business"]
+    assert updated["review"]["approved_destinations"] == ["professional"]
     assert updated["review"]["sensitivity"] == "confidential"
     assert updated["review"]["remember_rule"] is True
     assert updated["review"]["correction_note"] == "AOS architecture reference."
+    assert updated["understanding"]["material_type"] == "article"
+    assert updated["understanding"]["processing_plan"] == ["Summarize", "Extract claims/insights"]
+    assert updated["understanding"]["why_saved"] == "AOS architecture signal."
     assert updated["actions"]["approved"] == ["Create a follow-up note.", "Add to digest."]
 
 

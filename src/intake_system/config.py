@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from intake_system.knowledge import KNOWLEDGE_BASE_KEYS
+
 
 class ConfigError(ValueError):
     pass
@@ -140,20 +142,7 @@ def load_config(path: str | Path | None = None) -> IntakeConfig:
 
 
 def _validate_destinations(destinations: dict[str, DestinationConfig]) -> None:
-    required = {
-        "personal",
-        "professional",
-        "continuum_loop",
-        "aos",
-        "general_business",
-        "travel",
-        "ayra_team_safe",
-        "ayra_private",
-        "ayra_corporate_internal",
-        "ayra_confidential",
-        "client_specific",
-        "inbox",
-    }
+    required = set(KNOWLEDGE_BASE_KEYS)
     missing = sorted(required - set(destinations))
     if missing:
         raise ConfigError(f"missing destination definitions: {', '.join(missing)}")
@@ -163,4 +152,3 @@ def load_active_context(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     return yaml.safe_load(path.read_text()) or {}
-

@@ -9,6 +9,14 @@ import yaml
 from intake_system.config import DestinationConfig, IntakeConfig
 from intake_system.frontmatter import dumps, loads
 from intake_system.ids import slugify, utc_now_iso
+from intake_system.knowledge import (
+    KNOWLEDGE_BASE_LABELS,
+    canonical_knowledge_base,
+    canonical_knowledge_bases,
+    default_knowledge_bases,
+    infer_material_type,
+    infer_processing_plan,
+)
 from intake_system.models import ClassifiedItem, ReviewDecision
 from intake_system.readwise import readwise_reader_url
 from intake_system.writer import MarkdownWriter, note_filename
@@ -46,9 +54,14 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
             "mentioned_people": classification.mentioned_people,
             "mentioned_orgs": classification.mentioned_orgs,
         },
+        "understanding": {
+            "material_type": infer_material_type(item, classification),
+            "processing_plan": infer_processing_plan(item, classification),
+            "why_saved": classification.rationale,
+        },
         "review": {
             "status": "pending",
-            "approved_destinations": [classification.primary_destination],
+            "approved_destinations": default_knowledge_bases(classification),
             "sensitivity": classification.sensitivity,
             "remember_rule": False,
             "correction_note": None,
@@ -77,7 +90,7 @@ Source: {source_link}
 
 Hypothesis: {classification.rationale}
 
-## Routing Recommendation
+## Knowledge Base Recommendation
 
 - Primary: `{classification.primary_destination}`
 - Candidates: {", ".join(f"`{value}`" for value in classification.destination_candidates)}
@@ -120,7 +133,7 @@ def build_daily_index(config: IntakeConfig, items: Iterable[ClassifiedItem], *, 
         except ValueError:
             link = staged_path
         rows.append(
-            f"- [{item.title}]({link}) - `{classified.classification.primary_destination}` "
+            f"- [{item.title}]({link}) - `{_destination_label(config, classified.classification.primary_destination)}` "
             f"({classified.classification.confidence:.2f}, {classified.classification.sensitivity})"
         )
     body = "\n".join(rows) or "_No pending review items._"
@@ -141,9 +154,10 @@ def parse_review_decision(markdown_text: str) -> tuple[dict, ReviewDecision]:
     destinations = review.get("approved_destinations") or []
     if isinstance(destinations, str):
         destinations = [destinations]
+    destinations = canonical_knowledge_bases([str(value) for value in destinations])
     decision = ReviewDecision(
         status=str(review.get("status") or "pending"),
-        destinations=[str(value) for value in destinations],
+        destinations=destinations,
         sensitivity=str(review.get("sensitivity") or "private"),
         remember_rule=bool(review.get("remember_rule", False)),
         correction_note=review.get("correction_note"),
@@ -198,3 +212,8 @@ def final_relative_path(classified: ClassifiedItem) -> str:
 
 def writer_for_destinations(destinations: dict[str, DestinationConfig]) -> MarkdownWriter:
     return MarkdownWriter({key: value.path for key, value in destinations.items()})
+
+
+def _destination_label(config: IntakeConfig, key: str) -> str:
+    canonical = canonical_knowledge_base(key)
+    return KNOWLEDGE_BASE_LABELS.get(canonical, canonical)

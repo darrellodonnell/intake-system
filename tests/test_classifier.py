@@ -28,9 +28,8 @@ def test_ayra_member_signal_is_confidential() -> None:
     assert classification.confidence >= 0.8
 
 
-def test_travel_defaults_to_personal_travel_bucket() -> None:
+def test_travel_defaults_to_personal_knowledge_base() -> None:
     classification = classify_item(item("Living in Portugal as a remote worker"))
 
-    assert classification.primary_destination == "travel"
+    assert classification.primary_destination == "personal"
     assert classification.sensitivity == "private"
-

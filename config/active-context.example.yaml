@@ -10,9 +10,8 @@ people:
 
 routing_hints:
   - when: "Ayra member + AI/learning/current Ayra theme"
-    destination: ayra_confidential
+    knowledge_base: ayra_confidential
     rationale: "Member-specific signal is conservative-by-default."
   - when: "travel/living somewhere without product connection"
-    destination: travel
-    rationale: "Travel defaults to personal knowledge unless explicitly tied to SlowTravel product/research."
-
+    knowledge_base: personal
+    rationale: "Travel defaults to Personal unless explicitly tied to product/research."

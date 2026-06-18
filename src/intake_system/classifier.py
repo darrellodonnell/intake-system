@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from intake_system.knowledge import canonical_knowledge_bases
 from intake_system.models import Classification, SourceItem
 
 
-AYRA_TERMS = ("ayra", "david treat", "member", "client", "prospect")
+AYRA_TERMS = ("ayra", "ayra.ai")
+AYRA_CONFIDENTIAL_TERMS = ("david treat", "member", "client", "prospect", "confidential")
 AI_TERMS = ("ai", "agent", "agentic", "llm", "learning")
 AOS_TERMS = ("aos", "ehos", "agentic os", "event bus", "mcp", "agent runtime")
 TRAVEL_TERMS = ("travel", "slow travel", "living in", "move to", "retire", "country")
@@ -24,41 +26,44 @@ def classify_item(item: SourceItem, *, active_context: dict[str, Any] | None = N
     sensitivity = "private"
     confidence = 0.52
 
-    if _contains_any(text, AYRA_TERMS) or mentioned_people:
+    if _contains_any(text, AYRA_CONFIDENTIAL_TERMS) or mentioned_people:
         candidates.append("ayra_confidential")
         sensitivity = "confidential"
         confidence = 0.82
         rationale.append("Ayra/client/member signal detected; conservative confidentiality policy applies.")
+    elif _contains_any(text, AYRA_TERMS):
+        candidates.append("ayra_corporate_internal")
+        sensitivity = "private"
+        confidence = 0.76
+        rationale.append("Ayra corporate signal detected without client/member-specific context.")
     if _contains_any(text, AOS_TERMS):
-        candidates.append("aos")
+        candidates.append("professional")
         confidence = max(confidence, 0.74)
         rationale.append("Agentic systems/AOS terminology detected.")
     if _contains_any(text, TRAVEL_TERMS):
-        candidates.append("travel")
+        candidates.append("personal")
         confidence = max(confidence, 0.7)
-        rationale.append("Travel or living-in-place signal detected; defaults to personal travel unless tied to product work.")
+        rationale.append("Travel or living-in-place signal detected; defaults to personal unless tied to product work.")
     if _contains_any(text, SYSTEMS_TERMS) or _contains_any(text, AI_TERMS):
-        candidates.append("general_business")
+        candidates.append("professional")
         confidence = max(confidence, 0.66)
         rationale.append("AI, systems thinking, or general business learning signal detected.")
     if item.source_type in {"linkedin", "x_twitter"} and "ayra_confidential" not in candidates:
         candidates.append("professional")
         confidence = max(confidence, 0.62)
-        rationale.append("Professional social source with no stronger destination signal.")
+        rationale.append("Professional social source with no stronger knowledge base signal.")
     if not candidates:
-        candidates.append("inbox")
-        rationale.append("No strong routing signal; needs review.")
+        candidates.append("professional")
+        rationale.append("No strong knowledge base signal; defaults to professional review.")
 
-    candidates = _dedupe(candidates)
+    candidates = canonical_knowledge_bases(_dedupe(candidates))
     primary = candidates[0]
-    if primary == "ayra_team_safe":
-        sensitivity = "team_safe"
-    elif primary == "inbox":
+    if primary != "ayra_confidential":
         sensitivity = "private"
 
     actions = []
     if item.source_type == "youtube":
-        actions.append("Review summary and transcript/source reference before final routing.")
+        actions.append("Transcribe and extract summary, claims, people/orgs, and actions.")
     if "ayra_confidential" in candidates:
         actions.append("Confirm whether this is member/client-specific or team-safe.")
     if item.content_status != "extracted":
@@ -133,4 +138,3 @@ def _topics(text: str) -> list[str]:
         if re.search(pattern, text):
             topics.append(label)
     return topics
-
