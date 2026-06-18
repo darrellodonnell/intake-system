@@ -20,10 +20,26 @@ def connect(dsn: str) -> psycopg.Connection:
 
 
 def apply_migrations(dsn: str) -> None:
+    migrations = _migration_files()
+    if not migrations:
+        raise RuntimeError("no migration files found")
     with connect(dsn) as conn:
-        for migration in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        for migration in migrations:
             conn.execute(migration.read_text())
         conn.commit()
+
+
+def _migration_files() -> list[Path]:
+    candidates = [
+        MIGRATIONS_DIR,
+        Path.cwd() / "migrations",
+        Path("/app/migrations"),
+    ]
+    for directory in candidates:
+        migrations = sorted(directory.glob("*.sql"))
+        if migrations:
+            return migrations
+    return []
 
 
 class IntakeRepository:
@@ -321,4 +337,3 @@ def _classified_item(row: dict) -> ClassifiedItem:
         classifier_version=row["classifier_version"],
     )
     return ClassifiedItem(record=record, classification=classification, staged_path=row.get("staged_path"))
-
