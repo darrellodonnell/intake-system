@@ -12,3 +12,19 @@ services:
       - ./review:/app/review
       - ./out:/app/out
     command: ["--help"]
+
+  intake-ui:
+    build: .
+    image: intake-system:dev
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      INTAKE_CONFIG: ${INTAKE_CONFIG:-config/intake.local.yaml}
+    volumes:
+      - ./config:/app/config:ro
+      - ./review:/app/review
+      - ./out:/app/out
+    ports:
+      - "${INTAKE_UI_HOST_PORT:-8087}:8087"
+    command: ["web", "serve", "--host", "0.0.0.0", "--port", "8087"]

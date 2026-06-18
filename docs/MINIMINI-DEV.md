@@ -97,3 +97,16 @@ Apply:
 docker compose -f docker-compose.dev.yml run --rm intake review apply
 ```
 
+## 7. Review UI
+
+```bash
+docker compose -f docker-compose.dev.yml up -d intake-ui
+```
+
+Open:
+
+```text
+http://minimini:8087/review
+```
+
+The UI reads the same staged Markdown notes and writes the same frontmatter that the CLI uses. Use `Save` to store a decision for later, or `Save + Apply` to create final notes immediately.

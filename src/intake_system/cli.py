@@ -5,6 +5,7 @@ from typing import Optional
 import json
 
 import typer
+import uvicorn
 
 from intake_system.classifier import classify_item
 from intake_system.config import ConfigError, load_active_context, load_config
@@ -28,6 +29,7 @@ backfill_app = typer.Typer(help="Backfill orchestration commands.")
 classify_app = typer.Typer(help="Classification commands.")
 review_app = typer.Typer(help="Markdown review commands.")
 fixtures_app = typer.Typer(help="Fixture ingestion commands.")
+web_app = typer.Typer(help="Review UI commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(readwise_app, name="readwise")
@@ -35,6 +37,7 @@ app.add_typer(backfill_app, name="backfill")
 app.add_typer(classify_app, name="classify")
 app.add_typer(review_app, name="review")
 app.add_typer(fixtures_app, name="fixtures")
+app.add_typer(web_app, name="web")
 
 
 def _config_path(value: Optional[Path]) -> Path | None:
@@ -223,6 +226,18 @@ def backfill_run(
     classify_pending(config=cfg.path, limit=1000)
     typer.echo("Building daily review batch...")
     review_build_daily(config=cfg.path, limit=review_limit)
+
+
+@web_app.command("serve")
+def web_serve(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind host."),
+    port: int = typer.Option(8087, "--port", help="Bind port."),
+) -> None:
+    cfg = _load(_config_path(config))
+    from intake_system.web import create_app
+
+    uvicorn.run(create_app(cfg), host=host, port=port)
 
 
 if __name__ == "__main__":

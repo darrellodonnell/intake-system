@@ -40,6 +40,14 @@ docker compose -f docker-compose.dev.yml run --rm intake fixtures load fixtures/
 docker compose -f docker-compose.dev.yml run --rm intake backfill run
 ```
 
+Run the review UI:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d intake-ui
+```
+
+Open `http://minimini:8087/review`.
+
 ## Configuration
 
 The committed [`config/intake.example.yaml`](config/intake.example.yaml) defines logical destinations and safe defaults. Copy it to `config/intake.local.yaml` for real paths and credentials. The local file is ignored by git.

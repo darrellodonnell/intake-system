@@ -209,6 +209,25 @@ class IntakeRepository:
         ).fetchall()
         return [_classified_item(row) for row in rows]
 
+    def review_queue_items(self, *, limit: int = 250) -> list[ClassifiedItem]:
+        rows = self.conn.execute(
+            """
+            SELECT i.*, c.primary_destination, c.destination_candidates, c.confidence,
+                   c.sensitivity, c.rationale, c.extracted_topics, c.mentioned_people,
+                   c.mentioned_orgs, c.suggested_actions, c.classifier_version,
+                   r.staged_path
+            FROM intake.items i
+            JOIN intake.classifications c ON c.item_id = i.id
+            JOIN intake.review_notes r ON r.item_id = i.id
+            WHERE r.review_status = 'pending'
+               OR (r.review_status IN ('approved', 'corrected') AND r.final_path IS NULL)
+            ORDER BY i.review_priority DESC, i.captured_at DESC NULLS LAST, i.id
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+        return [_classified_item(row) for row in rows]
+
     def upsert_review_note(self, item_id: int, staged_path: str, frontmatter: dict) -> None:
         self.conn.execute(
             """
