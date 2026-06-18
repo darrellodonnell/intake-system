@@ -253,7 +253,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           {_source_link_button(source_url)}
         </div>
         <div class="article-body">
-          {_render_article_body(body)}
+          {_render_article_body(body, omitted_sections={"Routing Recommendation"})}
         </div>
       </div>
       {_source_frame(source_url)}
@@ -337,8 +337,8 @@ def _source_frame(source_url: str) -> str:
 </div>"""
 
 
-def _render_article_body(body: str) -> str:
-    lines = body.splitlines()
+def _render_article_body(body: str, *, omitted_sections: set[str] | None = None) -> str:
+    lines = _without_sections(body.splitlines(), omitted_sections or set())
     html: list[str] = []
     in_list = False
     for raw_line in lines:
@@ -369,6 +369,23 @@ def _render_article_body(body: str) -> str:
     if in_list:
         html.append("</ul>")
     return "\n".join(html)
+
+
+def _without_sections(lines: list[str], section_titles: set[str]) -> list[str]:
+    if not section_titles:
+        return lines
+    kept: list[str] = []
+    skipping = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            title = stripped[3:].strip()
+            skipping = title in section_titles
+            if skipping:
+                continue
+        if not skipping:
+            kept.append(line)
+    return kept
 
 
 def _thinking_box(review: dict[str, Any]) -> str:
