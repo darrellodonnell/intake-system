@@ -348,7 +348,7 @@ def _source_details(item, source_url: str, reader_url: str | None) -> str:
     if raw.get("word_count"):
         rows.append(f"<dt>Word count</dt><dd>{escape(str(raw.get('word_count')))}</dd>")
     if raw.get("reading_time"):
-        rows.append(f"<dt>Reading time</dt><dd>{escape(str(raw.get('reading_time')))} minute(s)</dd>")
+        rows.append(f"<dt>Reading time</dt><dd>{escape(str(raw.get('reading_time')))}</dd>")
     if raw.get("saved_at"):
         rows.append(f"<dt>Saved in Readwise</dt><dd>{escape(str(raw.get('saved_at')))}</dd>")
     return f"""<details class="source-details">
