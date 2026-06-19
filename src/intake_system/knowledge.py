@@ -83,6 +83,8 @@ def infer_material_type(item: SourceItem, classification: Classification) -> str
         return "social post/thread"
     if item.source_type in {"pdf", "document"}:
         return "pdf/document"
+    if item.source_type in {"pinboard", "bookmark"}:
+        return "reference/resource"
     if item.source_type in {"audio", "podcast"}:
         return "audio"
     if any(term in text for term in ("idea", "thought", "hypothesis")):
@@ -97,6 +99,8 @@ def infer_processing_plan(item: SourceItem, classification: Classification) -> l
     intents: list[str] = []
     if item.source_type in {"youtube", "audio", "podcast"}:
         intents.append("Transcribe and extract for video/audio")
+    if item.source_type in {"pinboard", "bookmark"}:
+        intents.append("Save as reference")
     if item.content_status != "extracted" and item.source_type not in {"youtube", "audio", "podcast"}:
         intents.append("Save as reference")
     else:

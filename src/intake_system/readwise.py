@@ -160,11 +160,15 @@ def is_readwise_reader_url(url: str) -> bool:
 
 def _source_type(raw: dict[str, Any], url: str | None) -> str:
     category = str(raw.get("category") or raw.get("source_type") or "").lower()
-    if category in {"article", "pdf", "epub", "email", "rss", "tweet", "video", "highlight"}:
+    value = f"{url or ''} {raw.get('site_name') or ''} {raw.get('source') or ''}".lower()
+    if "pinboard.in" in value:
+        return "pinboard"
+    if category in {"article", "pdf", "epub", "email", "rss", "tweet", "video", "highlight", "bookmark"}:
         if category == "video":
             return "youtube" if url and "youtu" in url else "video"
+        if category == "bookmark":
+            return "bookmark"
         return "x_twitter" if category == "tweet" else category
-    value = f"{url or ''} {raw.get('site_name') or ''}".lower()
     if "youtube.com" in value or "youtu.be" in value:
         return "youtube"
     if "linkedin.com" in value:
@@ -285,6 +289,8 @@ def _review_priority(source_type: str, raw: dict[str, Any]) -> int:
         "x_twitter": 75,
         "document": 70,
         "highlight": 70,
+        "pinboard": 65,
+        "bookmark": 65,
         "article": 60,
         "pdf": 60,
     }.get(source_type, 50)

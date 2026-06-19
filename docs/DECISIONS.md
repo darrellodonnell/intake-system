@@ -39,3 +39,10 @@
 - Intake should not call GBrain directly by default. Intake emits approved/clarification packets; NIOBE decides what should become G-brain memory or KB material.
 - Treat the GBrain endpoint as a NIOBE downstream adapter target. Store token/endpoint configuration outside git and send only reviewed, provenance-rich Markdown artifacts or memory candidates.
 - Open design questions: exact deployed auth token source, markdown envelope/frontmatter expected by this GBrain instance, source/brain routing values, duplicate/idempotency behavior, and whether NIOBE should write one page per reviewed item or synthesize/consolidate first.
+
+## 2026-06-19: Pinboard Links
+
+- Intake should recognize `pinboard.in` links as bookmark/reference material rather than ordinary articles.
+- V0 support is source normalization and routing behavior only: Pinboard links are staged for review and treated as reference/resource inputs.
+- Future Pinboard API ingestion should preserve both the bookmark metadata and the bookmarked target URL when they differ.
+- Open design questions: whether Pinboard is a direct source, a Supamaus/MCP upstream, or a Readwise-imported source; how to represent tags; and whether private Pinboard bookmarks require additional sensitivity defaults.

@@ -4,6 +4,7 @@ from pathlib import Path
 from intake_system.config import ClassifierConfig, DatabaseConfig, DestinationConfig, IntakeConfig, ReadwiseConfig, ReviewConfig
 from intake_system.frontmatter import dumps
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
+from intake_system.knowledge import infer_material_type, infer_processing_plan
 from intake_system.review import clean_final_note, parse_review_decision, review_body, review_frontmatter, stage_review_note
 
 
@@ -173,3 +174,29 @@ def test_review_keeps_highlight_parent_context() -> None:
     assert frontmatter["source"]["parent"]["url"] == "https://www.greektravel.com/"
     assert "Source: https://read.readwise.io/read/highlight-1" in body
     assert "Parent Article: https://www.greektravel.com/" in body
+
+
+def test_bookmark_sources_are_reference_material() -> None:
+    source = SourceItem(
+        source="readwise",
+        source_id="pinboard-1",
+        source_type="pinboard",
+        title="Saved links",
+        author=None,
+        source_url="https://pinboard.in/u:darrell/t:ai/",
+        captured_at=None,
+        readwise_tags=[],
+        raw={},
+        content_text="Useful saved links.",
+        content_status="extracted",
+    )
+    classification = Classification(
+        primary_destination="professional",
+        destination_candidates=["professional"],
+        confidence=0.7,
+        sensitivity="private",
+        rationale="Reference material.",
+    )
+
+    assert infer_material_type(source, classification) == "reference/resource"
+    assert "Save as reference" in infer_processing_plan(source, classification)

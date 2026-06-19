@@ -106,3 +106,19 @@ def test_normalize_readwise_highlight_uses_content_and_reader_link() -> None:
     assert item.title == "Highlight: This index will give you an idea of what sections are on each of the main Greece pages."
     assert item.content_status == "extracted"
     assert item.content_text == "This index will give you an idea of what sections are on each of the main Greece pages."
+
+
+def test_normalize_readwise_pinboard_link_is_bookmark_source() -> None:
+    item = normalize_readwise_item(
+        {
+            "id": "pinboard-1",
+            "title": "Saved links",
+            "url": "https://pinboard.in/u:darrell/t:ai/",
+            "category": "article",
+            "summary": "Useful saved links.",
+        }
+    )
+
+    assert item.source_type == "pinboard"
+    assert item.source_url == "https://pinboard.in/u:darrell/t:ai/"
+    assert item.content_status == "extracted"
