@@ -258,41 +258,45 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     reader_url = readwise_reader_url(item.raw)
     source_preview = _source_frame(source_url)
     return f"""<article>
-  <div class="review-layout">
-    <div class="reader">
+  <form method="post" action="/review/{classified.record.id}" class="decision-form">
+    <input type="hidden" name="action" value="apply">
+    <div class="review-top">
       <div class="title-row">
         <div>
           <h2>{escape(item.title)}</h2>
-          {_source_links(source_url, reader_url)}
+          {_source_details(item, source_url, reader_url)}
         </div>
-        <div class="meta">{escape(item.source_type)} · {escape(item.source)}</div>
       </div>
+      <section class="kb-decision">
+        <h3>Where Does This Belong?</h3>
+        <p class="decision-question">{escape(_decision_question(classified))}</p>
+        <div class="recommendation">
+          <span>Recommended knowledge base</span>
+          <strong>{escape(_destination_label(cfg, primary_destination))}</strong>
+          <small>{escape(str(classification.get('confidence', '')))} confidence · {escape(sensitivity)}</small>
+        </div>
+        <fieldset class="destination-picker">
+          <legend>Knowledge bases</legend>
+          {_destination_checkboxes(cfg, destination_values, primary_destination)}
+        </fieldset>
+      </section>
+    </div>
+    <div class="review-layout">
+      <div class="reader">
       <div class="article-card">
         <div class="article-header">
           <h3>Saved Item</h3>
-          {_source_link_button(source_url)}
         </div>
         <div class="article-body">
           {_render_article_body(body, omitted_sections={"Why This Was Saved", "Routing Recommendation", "Knowledge Base Recommendation"})}
         </div>
       </div>
-    </div>
-    <aside class="decision">
-      <h3>Where Does This Belong?</h3>
-      <p class="decision-question">{escape(_decision_question(classified))}</p>
-      <div class="recommendation">
-        <span>Recommended knowledge base</span>
-        <strong>{escape(_destination_label(cfg, primary_destination))}</strong>
-        <small>{escape(str(classification.get('confidence', '')))} confidence · {escape(sensitivity)}</small>
       </div>
-      <form method="post" action="/review/{classified.record.id}" class="decision-form">
-        <input type="hidden" name="action" value="apply">
-        <fieldset class="destination-picker">
-          <legend>Knowledge bases</legend>
-          {_destination_checkboxes(cfg, destination_values, primary_destination)}
-        </fieldset>
-        <div class="understanding">
-          <h4>System thinks</h4>
+      <aside class="decision">
+        {_suggested_actions(classified.classification.suggested_actions, approved_actions)}
+        {_thinking_box(review)}
+        <details class="system-details">
+          <summary>System thinks</summary>
           <label>What is it?
             {_select('material_type', MATERIAL_TYPES, str(understanding.get('material_type') or 'article'))}
           </label>
@@ -302,25 +306,21 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
           <label>Why saved?
             <textarea name="why_saved" rows="3">{escape(str(understanding.get('why_saved') or ''))}</textarea>
           </label>
-        </div>
-        {_thinking_box(review)}
-        <details>
+        </details>
+        <details class="system-details">
           <summary>More options</summary>
           <div class="controls">
             <label>Sensitivity {_select('sensitivity', SENSITIVITY_OPTIONS, str(review.get('sensitivity', sensitivity)))}</label>
             <label class="check"><input type="checkbox" name="remember_rule" value="true" {_checked(bool(review.get('remember_rule')))}> Remember this decision</label>
           </div>
-          <label>Approved actions
-            <textarea name="approved_actions" rows="3">{escape(approved_actions)}</textarea>
-          </label>
         </details>
         <div class="buttons decision-buttons">
           <button type="submit" name="status" value="approved">File This</button>
           <button type="submit" name="status" value="skipped" class="secondary">Skip Item</button>
         </div>
-      </form>
-    </aside>
-  </div>
+      </aside>
+    </div>
+  </form>
   {_lower_source_preview(source_preview)}
 </article>"""
 
@@ -336,11 +336,25 @@ def _decision_question(classified: ClassifiedItem) -> str:
     return "Should it enter the recommended knowledge base?"
 
 
-def _source_links(source_url: str, reader_url: str | None) -> str:
-    original = _source_link(source_url, "Original Source")
+def _source_details(item, source_url: str, reader_url: str | None) -> str:
+    rows = [
+        f"<dt>Original source</dt><dd>{_source_link(source_url) if source_url else 'No source URL'}</dd>",
+    ]
     if reader_url and reader_url != source_url:
-        return f'{original}<span class="source-separator">·</span>{_source_link(reader_url, "Readwise")}'
-    return original
+        rows.append(f"<dt>Readwise</dt><dd>{_source_link(reader_url)}</dd>")
+    rows.append(f"<dt>Source type</dt><dd>{escape(item.source_type)}</dd>")
+    rows.append(f"<dt>Ingested from</dt><dd>{escape(item.source)}</dd>")
+    raw = item.raw or {}
+    if raw.get("word_count"):
+        rows.append(f"<dt>Word count</dt><dd>{escape(str(raw.get('word_count')))}</dd>")
+    if raw.get("reading_time"):
+        rows.append(f"<dt>Reading time</dt><dd>{escape(str(raw.get('reading_time')))} minute(s)</dd>")
+    if raw.get("saved_at"):
+        rows.append(f"<dt>Saved in Readwise</dt><dd>{escape(str(raw.get('saved_at')))}</dd>")
+    return f"""<details class="source-details">
+  <summary>Source details</summary>
+  <dl>{"".join(rows)}</dl>
+</details>"""
 
 
 def _source_link(source_url: str, label: str | None = None) -> str:
@@ -354,6 +368,18 @@ def _source_link_button(source_url: str) -> str:
     if not source_url:
         return ""
     return f'<a class="open-source" href="{escape(source_url)}" target="_blank" rel="noreferrer">Open Source</a>'
+
+
+def _suggested_actions(suggested_actions: list[str], approved_actions: str) -> str:
+    actions = suggested_actions or ["No suggested actions."]
+    items = "".join(f"<li>{escape(action)}</li>" for action in actions)
+    return f"""<section class="suggested-actions">
+  <h3>Suggested Actions</h3>
+  <ul>{items}</ul>
+  <label>Approved actions
+    <textarea name="approved_actions" rows="4">{escape(approved_actions)}</textarea>
+  </label>
+</section>"""
 
 
 def _source_frame(source_url: str) -> str:
@@ -520,8 +546,9 @@ nav { border-right:1px solid var(--line); background:var(--panel); overflow:auto
 .item strong { display:block; font-size:14px; line-height:1.25; font-weight:650; }
 .item span { display:block; margin-top:5px; color:var(--muted); font-size:12px; }
 .item.active { background:#fff; box-shadow:inset 3px 0 0 var(--accent); }
-section { overflow:auto; max-height:calc(100vh - 64px); }
+main > section { overflow:auto; max-height:calc(100vh - 64px); }
 article { padding:22px; }
+.review-top { margin-bottom:18px; }
 .review-layout { display:grid; grid-template-columns:minmax(0, 1.35fr) minmax(320px, .65fr); gap:22px; align-items:start; }
 .reader, .decision { min-width:0; }
 .decision { border:1px solid var(--line); border-radius:8px; padding:16px; background:#fff; position:sticky; top:18px; }
@@ -529,8 +556,12 @@ article { padding:22px; }
 h2 { font-size:22px; line-height:1.2; margin:0 0 6px; letter-spacing:0; }
 a { color:#175cd3; }
 .source-separator { color:var(--muted); margin:0 7px; }
+.source-details { margin-top:8px; max-width:920px; }
+.source-details summary, .system-details summary { color:var(--muted); cursor:pointer; font-size:12px; font-weight:750; }
+.source-details dl { margin-top:8px; }
 .meta { color:var(--muted); white-space:nowrap; font-size:13px; }
 form { margin:18px 0; }
+form.decision-form { margin:0; }
 .controls { display:grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap:12px; align-items:end; }
 label { display:block; font-size:12px; color:var(--muted); font-weight:650; }
 select, textarea { width:100%; margin-top:5px; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; color:var(--ink); background:#fff; }
@@ -542,7 +573,11 @@ textarea { resize:vertical; }
 .understanding { display:grid; gap:10px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:6px; background:#fff; }
 .understanding h4 { margin:0; color:var(--ink); font-size:13px; letter-spacing:0; }
 .understanding textarea { background:#fbfcfd; }
-.destination-picker { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; margin:14px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; }
+.kb-decision { margin-top:14px; padding:14px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd; }
+.kb-decision h3 { margin-bottom:6px; }
+.kb-decision .decision-question { margin:0 0 10px; }
+.kb-decision .recommendation { margin-bottom:10px; }
+.destination-picker { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin:10px 0 0; padding:0; border:0; background:transparent; }
 .destination-picker legend { color:var(--muted); font-size:12px; font-weight:700; padding:0 4px; }
 .kb-toggle { position:relative; display:flex; min-height:42px; align-items:center; gap:8px; color:var(--ink); font-size:13px; font-weight:650; border:1px solid var(--line); border-radius:8px; padding:9px 10px; background:#fff; cursor:pointer; }
 .kb-toggle:hover { border-color:#7fbbb5; background:#f4fbfa; }
@@ -552,6 +587,11 @@ textarea { resize:vertical; }
 .recommended-badge { position:relative; margin-left:auto; color:var(--accent); font-size:10px; font-weight:750; text-transform:uppercase; letter-spacing:0; }
 .buttons { display:flex; gap:10px; margin-top:14px; }
 .decision-buttons { align-items:center; flex-wrap:wrap; }
+.suggested-actions { margin-bottom:14px; }
+.suggested-actions ul { margin:0 0 12px; padding-left:18px; }
+.suggested-actions li { margin:5px 0; font-size:13px; line-height:1.35; }
+.system-details { margin:12px 0; padding-top:10px; border-top:1px solid var(--line); }
+.system-details label { margin-top:10px; }
 .source-lower { margin-top:22px; }
 .source-lower:empty { display:none; }
 .source-preview { border-top:1px solid var(--line); padding-top:18px; }
@@ -568,7 +608,7 @@ pre { margin:0; padding:14px; border:1px solid var(--line); border-radius:6px; b
 @media (max-width: 860px) {
   main { grid-template-columns:1fr; }
   nav { max-height:280px; border-right:0; border-bottom:1px solid var(--line); }
-  section { max-height:none; }
+  main > section { max-height:none; }
   .review-layout, .controls, .split, .destination-picker { grid-template-columns:1fr; }
   .decision { position:static; }
   .title-row { display:block; }
