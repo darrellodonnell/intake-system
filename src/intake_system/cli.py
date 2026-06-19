@@ -10,6 +10,7 @@ import uvicorn
 from intake_system.classifier import classify_item
 from intake_system.config import ConfigError, load_active_context, load_config
 from intake_system.db import IntakeRepository, apply_migrations, connect, upsert_many
+from intake_system.frontmatter import dumps
 from intake_system.maintenance import refresh_readwise_content, repair_readwise_source_urls
 from intake_system.outbox import clarification_needed_packet, reviewed_item_packet
 from intake_system.readwise import ReadwiseClient
@@ -351,6 +352,53 @@ def outbox_build_clarifications(
     typer.echo(f"{mode} clarification packet with {count} item(s).")
     if not apply:
         typer.echo(json.dumps(payload, default=str, indent=2))
+
+
+@outbox_app.command("backfill-reviewed")
+def outbox_backfill_reviewed(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    limit: int = typer.Option(100, "--limit", help="Maximum reviewed items to scan."),
+    apply: bool = typer.Option(False, "--apply", help="Write reviewed-item packets to the outbox."),
+) -> None:
+    cfg = _load(_config_path(config))
+    queued = 0
+    with connect(cfg.database.dsn) as conn:
+        repo = IntakeRepository(conn)
+        rows = conn.execute(
+            """
+            SELECT item_id, final_path, frontmatter
+            FROM intake.review_notes
+            WHERE review_status IN ('approved', 'corrected')
+            ORDER BY updated_at DESC, item_id
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+        for row in rows:
+            classified = repo.get_classified_by_id(int(row["item_id"]))
+            if classified is None:
+                continue
+            frontmatter = dict(row["frontmatter"] or {})
+            decision = parse_review_decision(dumps(frontmatter, ""))[1]
+            key, payload = reviewed_item_packet(
+                classified,
+                decision,
+                frontmatter=frontmatter,
+                final_path=row["final_path"],
+            )
+            if apply:
+                repo.upsert_outbox_packet(
+                    packet_type="intake.reviewed_item",
+                    recipient="niobe",
+                    idempotency_key=key,
+                    payload=payload,
+                    item_id=classified.record.id,
+                )
+            queued += 1
+        if apply:
+            repo.commit()
+    mode = "Queued" if apply else "Would queue"
+    typer.echo(f"{mode} {queued} reviewed-item packet(s).")
 
 
 if __name__ == "__main__":
