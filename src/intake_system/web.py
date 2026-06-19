@@ -492,9 +492,8 @@ def _destination_checkboxes(cfg: IntakeConfig, selected: list[str], recommended:
     for key in KNOWLEDGE_BASE_KEYS:
         if key not in cfg.destinations:
             continue
-        badge = '<span class="recommended-badge">Recommended</span>' if key == recommended else ""
         rows.append(
-            f"""<label class="kb-toggle"><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(KNOWLEDGE_BASE_LABELS[key])}</span>{badge}</label>"""
+            f"""<label class="kb-toggle"><input type="checkbox" name="approved_destinations" value="{escape(key)}" {_checked(key in selected_set)}> <span>{escape(KNOWLEDGE_BASE_LABELS[key])}</span></label>"""
         )
     return "\n".join(rows)
 
@@ -584,7 +583,6 @@ textarea { resize:vertical; }
 .kb-toggle:has(input:checked) { border-color:var(--accent); background:#ecfdf9; box-shadow:inset 0 0 0 1px var(--accent); }
 .kb-toggle input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 .kb-toggle span { position:relative; }
-.recommended-badge { position:relative; margin-left:auto; color:var(--accent); font-size:10px; font-weight:750; text-transform:uppercase; letter-spacing:0; }
 .buttons { display:flex; gap:10px; margin-top:14px; }
 .decision-buttons { align-items:center; flex-wrap:wrap; }
 .suggested-actions { margin-bottom:14px; }
