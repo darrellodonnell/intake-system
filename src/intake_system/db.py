@@ -304,6 +304,53 @@ class IntakeRepository:
             (status, final_path, json.dumps(frontmatter), item_id),
         )
 
+    def upsert_outbox_packet(
+        self,
+        *,
+        packet_type: str,
+        recipient: str,
+        idempotency_key: str,
+        payload: dict,
+        item_id: int | None = None,
+    ) -> int:
+        row = self.conn.execute(
+            """
+            INSERT INTO intake.outbox (
+                packet_type, recipient, item_id, idempotency_key, payload
+            )
+            VALUES (%s, %s, %s, %s, %s::jsonb)
+            ON CONFLICT (idempotency_key) DO UPDATE
+            SET packet_type = EXCLUDED.packet_type,
+                recipient = EXCLUDED.recipient,
+                item_id = EXCLUDED.item_id,
+                payload = EXCLUDED.payload,
+                updated_at = now()
+            RETURNING id
+            """,
+            (packet_type, recipient, item_id, idempotency_key, json.dumps(payload)),
+        ).fetchone()
+        return int(row["id"])
+
+    def pending_outbox_packets(self, *, limit: int = 50, recipient: str | None = None) -> list[dict]:
+        params: list[object] = []
+        recipient_filter = ""
+        if recipient:
+            recipient_filter = "AND recipient = %s"
+            params.append(recipient)
+        params.append(limit)
+        return self.conn.execute(
+            f"""
+            SELECT id, packet_type, recipient, status, item_id, idempotency_key,
+                   payload, created_at, updated_at
+            FROM intake.outbox
+            WHERE status = 'pending'
+              {recipient_filter}
+            ORDER BY created_at, id
+            LIMIT %s
+            """,
+            params,
+        ).fetchall()
+
     def record_corrected_example(
         self,
         classified: ClassifiedItem,

@@ -11,6 +11,7 @@ from intake_system.classifier import classify_item
 from intake_system.config import ConfigError, load_active_context, load_config
 from intake_system.db import IntakeRepository, apply_migrations, connect, upsert_many
 from intake_system.maintenance import refresh_readwise_content, repair_readwise_source_urls
+from intake_system.outbox import clarification_needed_packet, reviewed_item_packet
 from intake_system.readwise import ReadwiseClient
 from intake_system.readwise import normalize_readwise_item
 from intake_system.review import (
@@ -32,6 +33,7 @@ review_app = typer.Typer(help="Markdown review commands.")
 fixtures_app = typer.Typer(help="Fixture ingestion commands.")
 web_app = typer.Typer(help="Review UI commands.")
 maintenance_app = typer.Typer(help="Maintenance and data repair commands.")
+outbox_app = typer.Typer(help="NIOBE-facing intake packet commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(readwise_app, name="readwise")
@@ -41,6 +43,7 @@ app.add_typer(review_app, name="review")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(web_app, name="web")
 app.add_typer(maintenance_app, name="maintenance")
+app.add_typer(outbox_app, name="outbox")
 
 
 def _config_path(value: Optional[Path]) -> Path | None:
@@ -208,6 +211,20 @@ def review_apply(
                     final_path=final_path,
                     frontmatter=frontmatter,
                 )
+                if decision.status in {"approved", "corrected"}:
+                    key, payload = reviewed_item_packet(
+                        classified,
+                        decision,
+                        frontmatter=frontmatter,
+                        final_path=final_path,
+                    )
+                    repo.upsert_outbox_packet(
+                        packet_type="intake.reviewed_item",
+                        recipient="niobe",
+                        idempotency_key=key,
+                        payload=payload,
+                        item_id=classified.record.id,
+                    )
             applied += 1
         if not dry_run:
             repo.commit()
@@ -284,6 +301,56 @@ def maintenance_refresh_readwise_content(
         f"scanned {result.scanned}, fetched {result.fetched}, no content {result.no_content}, "
         f"missing staged files {result.missing_staged_files}."
     )
+
+
+@outbox_app.command("pending")
+def outbox_pending(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    limit: int = typer.Option(20, "--limit", help="Maximum packets to show."),
+    recipient: str | None = typer.Option(None, "--recipient", help="Filter by recipient."),
+    json_output: bool = typer.Option(False, "--json", help="Emit full packets as JSON."),
+) -> None:
+    cfg = _load(_config_path(config))
+    with connect(cfg.database.dsn) as conn:
+        repo = IntakeRepository(conn)
+        packets = repo.pending_outbox_packets(limit=limit, recipient=recipient)
+    if json_output:
+        typer.echo(json.dumps([dict(packet) for packet in packets], default=str, indent=2))
+        return
+    for packet in packets:
+        payload = dict(packet["payload"] or {})
+        item_count = len(payload.get("items") or [])
+        suffix = f" items={item_count}" if item_count else ""
+        typer.echo(
+            f"{packet['id']} {packet['packet_type']} -> {packet['recipient']} "
+            f"item={packet['item_id']} key={packet['idempotency_key']}{suffix}"
+        )
+
+
+@outbox_app.command("build-clarifications")
+def outbox_build_clarifications(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    limit: int = typer.Option(25, "--limit", help="Maximum pending review items to scan."),
+    apply: bool = typer.Option(False, "--apply", help="Write the clarification packet to the outbox."),
+) -> None:
+    cfg = _load(_config_path(config))
+    with connect(cfg.database.dsn) as conn:
+        repo = IntakeRepository(conn)
+        items = repo.pending_review_items(limit=limit)
+        key, payload = clarification_needed_packet(items)
+        count = len(payload.get("items") or [])
+        if apply and count:
+            repo.upsert_outbox_packet(
+                packet_type="intake.clarification_needed",
+                recipient="niobe",
+                idempotency_key=key,
+                payload=payload,
+            )
+            repo.commit()
+    mode = "Queued" if apply else "Would queue"
+    typer.echo(f"{mode} clarification packet with {count} item(s).")
+    if not apply:
+        typer.echo(json.dumps(payload, default=str, indent=2))
 
 
 if __name__ == "__main__":

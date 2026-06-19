@@ -26,6 +26,7 @@ from intake_system.knowledge import (
     infer_processing_plan,
 )
 from intake_system.models import ClassifiedItem, ReviewDecision
+from intake_system.outbox import reviewed_item_packet
 from intake_system.pdf_extract import extract_pdf_markdown
 from intake_system.readwise import readwise_reader_url
 from intake_system.review import (
@@ -211,6 +212,15 @@ def _apply_one(
         final_path=final_path,
         frontmatter=frontmatter,
     )
+    if decision.status in {"approved", "corrected"}:
+        key, payload = reviewed_item_packet(classified, decision, frontmatter=frontmatter, final_path=final_path)
+        repo.upsert_outbox_packet(
+            packet_type="intake.reviewed_item",
+            recipient="niobe",
+            idempotency_key=key,
+            payload=payload,
+            item_id=classified.record.id,
+        )
     return final_path
 
 
