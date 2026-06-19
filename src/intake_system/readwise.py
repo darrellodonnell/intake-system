@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from html import unescape
 from html.parser import HTMLParser
+import time
 from typing import Any, Iterator
 from urllib.parse import urlparse, urlunparse
 
@@ -40,16 +41,22 @@ class ReadwiseClient:
                 if not next_cursor:
                     break
 
-    def get_raw_item(self, source_id: str) -> dict[str, Any] | None:
+    def get_raw_item(self, source_id: str, *, max_retries: int = 3) -> dict[str, Any] | None:
         with httpx.Client(timeout=30.0) as client:
-            response = client.get(
-                f"{self.base_url}/list/",
-                headers={"Authorization": f"Token {self.token}"},
-                params={"id": source_id, "withHtmlContent": "true"},
-            )
-            response.raise_for_status()
-            results = response.json().get("results") or []
-            return results[0] if results else None
+            for attempt in range(max_retries + 1):
+                response = client.get(
+                    f"{self.base_url}/list/",
+                    headers={"Authorization": f"Token {self.token}"},
+                    params={"id": source_id, "withHtmlContent": "true"},
+                )
+                if response.status_code != 429:
+                    response.raise_for_status()
+                    results = response.json().get("results") or []
+                    return results[0] if results else None
+                if attempt >= max_retries:
+                    response.raise_for_status()
+                time.sleep(_retry_after_seconds(response))
+        return None
 
 
 def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") -> SourceItem:
@@ -181,6 +188,16 @@ def _html_to_text(value: Any) -> str | None:
     parser.close()
     text = parser.text()
     return text or None
+
+
+def _retry_after_seconds(response: httpx.Response) -> float:
+    value = response.headers.get("Retry-After")
+    if value:
+        try:
+            return max(float(value), 1.0)
+        except ValueError:
+            return 10.0
+    return 10.0
 
 
 class _PlainTextHTMLParser(HTMLParser):

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 import re
+import time
 
 import psycopg
 
@@ -35,6 +36,7 @@ def refresh_readwise_content(
     client: ReadwiseClient,
     *,
     item_ids: list[int] | None = None,
+    request_delay: float = 0.0,
     dry_run: bool = True,
 ) -> ContentRefreshResult:
     params: list[object] = []
@@ -56,6 +58,8 @@ def refresh_readwise_content(
     result = ContentRefreshResult(scanned=len(rows))
     for row in rows:
         raw = client.get_raw_item(str(row["source_id"]))
+        if request_delay > 0:
+            time.sleep(request_delay)
         if raw is None:
             continue
         result.fetched += 1

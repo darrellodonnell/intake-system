@@ -265,6 +265,7 @@ def maintenance_repair_source_urls(
 def maintenance_refresh_readwise_content(
     config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
     item_id: list[int] | None = typer.Option(None, "--item-id", help="Limit refresh to a specific intake item id."),
+    request_delay: float = typer.Option(3.5, "--request-delay", help="Seconds to pause between Readwise item fetches."),
     apply: bool = typer.Option(False, "--apply", help="Write refreshed content to DB and staged notes."),
 ) -> None:
     cfg = _load(_config_path(config))
@@ -274,7 +275,7 @@ def maintenance_refresh_readwise_content(
         page_size=cfg.readwise.page_size,
     )
     with connect(cfg.database.dsn) as conn:
-        result = refresh_readwise_content(conn, client, item_ids=item_id, dry_run=not apply)
+        result = refresh_readwise_content(conn, client, item_ids=item_id, request_delay=request_delay, dry_run=not apply)
         if apply:
             conn.commit()
     mode = "Refreshed" if apply else "Would refresh"
