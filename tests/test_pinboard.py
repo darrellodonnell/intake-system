@@ -65,3 +65,35 @@ def test_pinboard_client_fetches_bookmarks_since_cursor(monkeypatch) -> None:
             },
         )
     ]
+
+
+def test_pinboard_client_limits_normalized_bookmarks(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return [
+                {"href": "https://example.com/one", "description": "One", "hash": "hash1"},
+                {"href": "https://example.com/two", "description": "Two", "hash": "hash2"},
+            ]
+
+    class FakeHttpClient:
+        def __init__(self, *, timeout: float):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get(self, url, *, params):
+            return FakeResponse()
+
+    monkeypatch.setattr("intake_system.pinboard.httpx.Client", FakeHttpClient)
+
+    items = PinboardClient(base_url="https://api.pinboard.in/v1", token="user:token").bookmarks(limit=1)
+
+    assert len(items) == 1
+    assert items[0].source_id == "hash1"

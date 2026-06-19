@@ -116,25 +116,52 @@ def readwise_sync(
 def pinboard_sync(
     config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
     full: bool = typer.Option(False, "--full", help="Ignore stored cursor and fetch all Pinboard bookmarks."),
+    since: str | None = typer.Option(None, "--since", help="Fetch bookmarks saved after this ISO datetime/date."),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Optional safety cap for this run."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Fetch and normalize without writing to the database."),
 ) -> None:
     cfg = _load(_config_path(config))
     client = PinboardClient(base_url=cfg.pinboard.base_url, token=cfg.pinboard.api_token)
+    if full and since:
+        raise typer.BadParameter("Use either --full or --since, not both.")
     with connect(cfg.database.dsn) as conn:
         repo = IntakeRepository(conn)
-        cursor = None if full else repo.get_source_cursor("pinboard")
-        run_id = repo.start_run("pinboard.sync", {"full": full, "cursor": cursor})
+        stored_cursor = repo.get_source_cursor("pinboard")
+        cursor = None if full else since or stored_cursor
+        if cursor is None and not full:
+            raise typer.BadParameter("No Pinboard cursor exists yet. Use --since for a scoped test or --full for backfill.")
+        run_id = None
+        if not dry_run:
+            run_id = repo.start_run(
+                "pinboard.sync",
+                {"full": full, "since": since, "cursor": cursor, "limit": limit},
+            )
         try:
-            items = client.bookmarks(since=cursor)
-            count = upsert_many(repo, items)
+            items = client.bookmarks(since=cursor, limit=limit)
+            count = len(items) if dry_run else upsert_many(repo, items)
             final_cursor = _latest_captured_at(items) or cursor
-            repo.upsert_source_state("pinboard", last_cursor=final_cursor)
-            repo.finish_run(run_id, "complete", {"items": count, "last_cursor": final_cursor})
-            repo.commit()
+            if not dry_run:
+                if limit is None:
+                    repo.upsert_source_state("pinboard", last_cursor=final_cursor)
+                repo.finish_run(
+                    run_id,
+                    "complete",
+                    {
+                        "items": count,
+                        "last_cursor": final_cursor,
+                        "cursor_advanced": limit is None,
+                    },
+                )
+                repo.commit()
         except Exception:
-            repo.finish_run(run_id, "failed", {"cursor": cursor})
-            repo.commit()
+            if run_id is not None:
+                repo.finish_run(run_id, "failed", {"cursor": cursor, "limit": limit})
+                repo.commit()
             raise
-    typer.echo(f"Synced {count} Pinboard bookmark(s).")
+    verb = "Fetched" if dry_run else "Synced"
+    suffix = " without writing" if dry_run else ""
+    cursor_note = " Cursor was not advanced because --limit was used." if limit is not None and not dry_run else ""
+    typer.echo(f"{verb} {count} Pinboard bookmark(s){suffix}.{cursor_note}")
 
 
 @fixtures_app.command("load")

@@ -16,7 +16,7 @@ class PinboardClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
 
-    def bookmarks(self, *, since: str | None = None) -> list[SourceItem]:
+    def bookmarks(self, *, since: str | None = None, limit: int | None = None) -> list[SourceItem]:
         params: dict[str, str] = {
             "auth_token": self.token,
             "format": "json",
@@ -30,6 +30,8 @@ class PinboardClient:
             payload = response.json()
         if not isinstance(payload, list):
             raise ValueError("Pinboard posts/all response must be a JSON list")
+        if limit is not None:
+            payload = payload[:limit]
         return [normalize_pinboard_bookmark(raw) for raw in payload]
 
 
