@@ -49,3 +49,23 @@ intake outbox build-clarifications --apply
 ```
 
 The outbox is intentionally inspectable before Hermes delivery is wired in.
+
+## Candidate Downstream: GBrain
+
+Darrell's deployed GBrain instance exposes:
+
+```text
+https://gbrain.quagga-chicken.ts.net/ingest
+```
+
+Observed behavior:
+
+- `OPTIONS /ingest` returns `Allow: POST`.
+- `GET /ingest` returns `404`.
+- Public GBrain docs describe webhook ingestion as `POST /ingest` with `Authorization: Bearer $TOKEN` and `Content-Type: text/markdown`.
+
+Architecture rule:
+
+- Intake should not post directly to GBrain as part of review apply.
+- NIOBE should consume `intake.reviewed_item` packets, decide what deserves memory or KB treatment, then write to GBrain through this endpoint when appropriate.
+- The bearer token and endpoint should live in ignored local config or NIOBE/Hermes secrets, never in intake packet payloads or committed config.

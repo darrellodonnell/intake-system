@@ -30,3 +30,12 @@
 - Reuse the existing routing/review model: infer knowledge bases and processing plans, then require review approval before final Markdown writes.
 - Keep the MCP boundary narrow: accept capture payloads and intent/context refs, but do not expose broad filesystem write authority or reusable credentials through the Supamaus integration.
 - Open design questions for implementation: Supamaus payload shape, auth model, local vs hosted MCP endpoint, PDF artifact handling, idempotency keys, and whether Supamaus can provide parent-page/context metadata similar to Readwise highlights.
+
+## 2026-06-19: GBrain Downstream Target
+
+- The deployed GBrain instance exposes `https://gbrain.quagga-chicken.ts.net/ingest`.
+- Endpoint probe: `OPTIONS /ingest` allows `POST`; `GET /ingest` returns `404`, so ingestion should be explicit POST-only.
+- Public GBrain docs show webhook ingestion as `POST /ingest` with bearer auth and `Content-Type: text/markdown`.
+- Intake should not call GBrain directly by default. Intake emits approved/clarification packets; NIOBE decides what should become G-brain memory or KB material.
+- Treat the GBrain endpoint as a NIOBE downstream adapter target. Store token/endpoint configuration outside git and send only reviewed, provenance-rich Markdown artifacts or memory candidates.
+- Open design questions: exact deployed auth token source, markdown envelope/frontmatter expected by this GBrain instance, source/brain routing values, duplicate/idempotency behavior, and whether NIOBE should write one page per reviewed item or synthesize/consolidate first.
