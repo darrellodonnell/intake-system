@@ -13,6 +13,7 @@ from intake_system.db import IntakeRepository, apply_migrations, connect, upsert
 from intake_system.frontmatter import dumps
 from intake_system.maintenance import refresh_readwise_content, repair_readwise_source_urls
 from intake_system.outbox import clarification_needed_packet, reviewed_item_packet
+from intake_system.pinboard import PinboardClient
 from intake_system.readwise import ReadwiseClient
 from intake_system.readwise import normalize_readwise_item
 from intake_system.review import (
@@ -28,6 +29,7 @@ from intake_system.review import (
 app = typer.Typer(help="Knowledge intake, triage, review, and Markdown routing.")
 db_app = typer.Typer(help="Database commands.")
 readwise_app = typer.Typer(help="Readwise ingestion commands.")
+pinboard_app = typer.Typer(help="Pinboard ingestion commands.")
 backfill_app = typer.Typer(help="Backfill orchestration commands.")
 classify_app = typer.Typer(help="Classification commands.")
 review_app = typer.Typer(help="Markdown review commands.")
@@ -38,6 +40,7 @@ outbox_app = typer.Typer(help="NIOBE-facing intake packet commands.")
 
 app.add_typer(db_app, name="db")
 app.add_typer(readwise_app, name="readwise")
+app.add_typer(pinboard_app, name="pinboard")
 app.add_typer(backfill_app, name="backfill")
 app.add_typer(classify_app, name="classify")
 app.add_typer(review_app, name="review")
@@ -56,6 +59,11 @@ def _load(path: Optional[Path]):
         return load_config(path)
     except ConfigError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+def _latest_captured_at(items) -> str | None:
+    values = [item.captured_at.isoformat() for item in items if item.captured_at]
+    return max(values) if values else None
 
 
 @db_app.command("migrate")
@@ -102,6 +110,31 @@ def readwise_sync(
             repo.commit()
             raise
     typer.echo(f"Synced {count} Readwise items across {pages} page(s).")
+
+
+@pinboard_app.command("sync")
+def pinboard_sync(
+    config: Optional[Path] = typer.Option(None, "--config", "-c", help="Path to intake config YAML."),
+    full: bool = typer.Option(False, "--full", help="Ignore stored cursor and fetch all Pinboard bookmarks."),
+) -> None:
+    cfg = _load(_config_path(config))
+    client = PinboardClient(base_url=cfg.pinboard.base_url, token=cfg.pinboard.api_token)
+    with connect(cfg.database.dsn) as conn:
+        repo = IntakeRepository(conn)
+        cursor = None if full else repo.get_source_cursor("pinboard")
+        run_id = repo.start_run("pinboard.sync", {"full": full, "cursor": cursor})
+        try:
+            items = client.bookmarks(since=cursor)
+            count = upsert_many(repo, items)
+            final_cursor = _latest_captured_at(items) or cursor
+            repo.upsert_source_state("pinboard", last_cursor=final_cursor)
+            repo.finish_run(run_id, "complete", {"items": count, "last_cursor": final_cursor})
+            repo.commit()
+        except Exception:
+            repo.finish_run(run_id, "failed", {"cursor": cursor})
+            repo.commit()
+            raise
+    typer.echo(f"Synced {count} Pinboard bookmark(s).")
 
 
 @fixtures_app.command("load")

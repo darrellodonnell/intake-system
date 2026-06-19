@@ -19,6 +19,7 @@ cp config/intake.example.yaml config/intake.local.yaml
 uv run intake db migrate --config config/intake.local.yaml
 uv run intake fixtures load fixtures/readwise-sample.json --config config/intake.local.yaml
 uv run intake readwise sync --config config/intake.local.yaml
+uv run intake pinboard sync --config config/intake.local.yaml
 uv run intake classify pending --config config/intake.local.yaml
 uv run intake review build-daily --config config/intake.local.yaml
 ```

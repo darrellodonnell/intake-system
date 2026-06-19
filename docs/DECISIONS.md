@@ -42,7 +42,9 @@
 
 ## 2026-06-19: Pinboard Links
 
-- Intake should recognize `pinboard.in` links as bookmark/reference material rather than ordinary articles.
-- V0 support is source normalization and routing behavior only: Pinboard links are staged for review and treated as reference/resource inputs.
-- Future Pinboard API ingestion should preserve both the bookmark metadata and the bookmarked target URL when they differ.
-- Open design questions: whether Pinboard is a direct source, a Supamaus/MCP upstream, or a Readwise-imported source; how to represent tags; and whether private Pinboard bookmarks require additional sensitivity defaults.
+- Pinboard is a first-class intake source, peer to Readwise, not merely a URL flavor that may appear through another upstream.
+- Pinboard API sync uses `source=pinboard` and `source_type=bookmark`.
+- The Pinboard bookmark record identity is stored as `source_id`; the bookmarked target URL is stored as `source_url`.
+- Pinboard bookmarks are staged for review and treated as reference/resource inputs by default.
+- If `pinboard.in` links arrive through Readwise, Supamaus, or another upstream, intake may still recognize them as Pinboard-related references, but direct Pinboard API ingestion is the canonical path.
+- Open design questions: whether private Pinboard bookmarks require additional sensitivity defaults, how to handle unread/shared flags, and whether archived page snapshots should be fetched or left to downstream processing.

@@ -1,7 +1,15 @@
 from dataclasses import replace
 from pathlib import Path
 
-from intake_system.config import ClassifierConfig, DatabaseConfig, DestinationConfig, IntakeConfig, ReadwiseConfig, ReviewConfig
+from intake_system.config import (
+    ClassifierConfig,
+    DatabaseConfig,
+    DestinationConfig,
+    IntakeConfig,
+    PinboardConfig,
+    ReadwiseConfig,
+    ReviewConfig,
+)
 from intake_system.frontmatter import dumps
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
 from intake_system.knowledge import infer_material_type, infer_processing_plan
@@ -51,6 +59,7 @@ def config(tmp_path: Path) -> IntakeConfig:
         path=tmp_path / "config.yaml",
         database=DatabaseConfig("INTAKE_DATABASE_DSN", "intake"),
         readwise=ReadwiseConfig("READWISE_API_TOKEN", "https://readwise.io/api/v3", 100),
+        pinboard=PinboardConfig("PINBOARD_API_TOKEN", "https://api.pinboard.in/v1"),
         review=ReviewConfig(tmp_path / "review" / "staging", tmp_path / "review" / "daily", 25, "private"),
         final_default_root=tmp_path / "out",
         classifier=ClassifierConfig("rules", 0.75),

@@ -50,6 +50,19 @@ class ReadwiseConfig:
 
 
 @dataclass(frozen=True)
+class PinboardConfig:
+    api_token_env: str
+    base_url: str
+
+    @property
+    def api_token(self) -> str:
+        value = os.environ.get(self.api_token_env)
+        if not value:
+            raise ConfigError(f"Pinboard token env var {self.api_token_env!r} is not set")
+        return value
+
+
+@dataclass(frozen=True)
 class ReviewConfig:
     staging_root: Path
     daily_root: Path
@@ -68,6 +81,7 @@ class IntakeConfig:
     path: Path
     database: DatabaseConfig
     readwise: ReadwiseConfig
+    pinboard: PinboardConfig
     review: ReviewConfig
     final_default_root: Path
     classifier: ClassifierConfig
@@ -97,6 +111,11 @@ def load_config(path: str | Path | None = None) -> IntakeConfig:
             api_token_env=data["readwise"].get("api_token_env", "READWISE_API_TOKEN"),
             base_url=data["readwise"].get("base_url", "https://readwise.io/api/v3").rstrip("/"),
             page_size=int(data["readwise"].get("page_size", 100)),
+        )
+        pinboard_data = data.get("pinboard") or {}
+        pinboard = PinboardConfig(
+            api_token_env=pinboard_data.get("api_token_env", "PINBOARD_API_TOKEN"),
+            base_url=pinboard_data.get("base_url", "https://api.pinboard.in/v1").rstrip("/"),
         )
         review = ReviewConfig(
             staging_root=_resolve_path(config_path, data["review"]["staging_root"]),
@@ -133,6 +152,7 @@ def load_config(path: str | Path | None = None) -> IntakeConfig:
         path=config_path,
         database=database,
         readwise=readwise,
+        pinboard=pinboard,
         review=review,
         final_default_root=final_default_root,
         classifier=classifier,

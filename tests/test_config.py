@@ -8,6 +8,7 @@ def test_load_example_config_has_required_destinations() -> None:
     config = load_config(Path("config/intake.example.yaml"))
 
     assert config.database.schema == "intake"
+    assert config.pinboard.base_url == "https://api.pinboard.in/v1"
     assert config.review.privacy == "private"
     assert tuple(config.destinations) == KNOWLEDGE_BASE_KEYS
     assert "ayra_confidential" in config.destinations
