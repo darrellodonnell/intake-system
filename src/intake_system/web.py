@@ -423,6 +423,7 @@ def _content_gap(item) -> str:
     <label>Extracted text
       <textarea name="manual_content" rows="8" placeholder="Paste PDF text, article text, or transcript here."></textarea>
     </label>
+    <button type="submit" name="action" value="save" class="secondary">Save Content</button>
     <small>Source remains {escape(source)}; this only replaces the missing captured context.</small>
   </details>
 </div>"""
