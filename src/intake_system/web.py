@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.datastructures import UploadFile
 
+from intake_system.classifier import classify_item
 from intake_system.config import IntakeConfig
+from intake_system.config import load_active_context
 from intake_system.db import IntakeRepository, connect
 from intake_system.frontmatter import dumps, loads
+from intake_system.ids import slugify
 from intake_system.knowledge import (
     KNOWLEDGE_BASE_KEYS,
     KNOWLEDGE_BASE_LABELS,
@@ -21,6 +26,7 @@ from intake_system.knowledge import (
     infer_processing_plan,
 )
 from intake_system.models import ClassifiedItem, ReviewDecision
+from intake_system.pdf_extract import extract_pdf_markdown
 from intake_system.readwise import readwise_reader_url
 from intake_system.review import (
     clean_final_note,
@@ -82,6 +88,39 @@ def create_app(config: IntakeConfig) -> FastAPI:
                 return RedirectResponse("/review?message=missing-item", status_code=303)
             path = Path(classified.staged_path)
             frontmatter, body = loads(path.read_text())
+            manual_pdf = _first_file(form, "manual_pdf")
+            manual_content = _first(form, "manual_content", "").strip()
+            provenance = "manual_review_paste"
+            provenance_detail: dict[str, str | int] = {}
+            if manual_pdf is not None:
+                pdf_bytes = await manual_pdf.read()
+                if pdf_bytes:
+                    try:
+                        manual_content = extract_pdf_markdown(pdf_bytes)
+                    except ValueError:
+                        return RedirectResponse(f"/review?item_id={item_id}&message=pdf-extraction-failed", status_code=303)
+                    upload_path = _save_uploaded_pdf(cfg, item_id, classified.record.item.source_id, manual_pdf, pdf_bytes)
+                    provenance = "manual_pdf_upload"
+                    provenance_detail = {
+                        "filename": manual_pdf.filename or "uploaded.pdf",
+                        "artifact_path": str(upload_path),
+                        "bytes": len(pdf_bytes),
+                    }
+            if manual_content:
+                updated = repo.replace_item_content(
+                    item_id,
+                    manual_content,
+                    provenance=provenance,
+                    provenance_detail=provenance_detail,
+                )
+                if updated is not None:
+                    repo.upsert_classification(
+                        item_id,
+                        classify_item(updated.item, active_context=load_active_context(cfg.active_context_file)),
+                    )
+                    classified = repo.get_classified_by_id(item_id) or classified
+                    frontmatter = _sync_classification_frontmatter(frontmatter, classified)
+                    body = _replace_extracted_context(body, manual_content)
             frontmatter = update_frontmatter_from_form(frontmatter, form)
             path.write_text(dumps(frontmatter, body))
             decision = _decision_from_frontmatter(frontmatter)
@@ -98,12 +137,19 @@ def create_app(config: IntakeConfig) -> FastAPI:
     return app
 
 
-async def _form_data(request: Request) -> dict[str, list[str]]:
+async def _form_data(request: Request) -> dict[str, list[Any]]:
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        parsed = await request.form()
+        values: dict[str, list[Any]] = {}
+        for key, value in parsed.multi_items():
+            values.setdefault(key, []).append(value)
+        return values
     body = await request.body()
     return parse_qs(body.decode("utf-8"), keep_blank_values=True)
 
 
-def update_frontmatter_from_form(frontmatter: dict[str, Any], form: dict[str, list[str]]) -> dict[str, Any]:
+def update_frontmatter_from_form(frontmatter: dict[str, Any], form: dict[str, list[Any]]) -> dict[str, Any]:
     updated = dict(frontmatter)
     review = dict(updated.get("review") or {})
     actions = dict(updated.get("actions") or {})
@@ -258,7 +304,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
     reader_url = readwise_reader_url(item.raw)
     source_preview = _source_frame(source_url)
     return f"""<article>
-  <form method="post" action="/review/{classified.record.id}" class="decision-form">
+  <form method="post" action="/review/{classified.record.id}" class="decision-form" enctype="multipart/form-data">
     <input type="hidden" name="action" value="apply">
     <div class="review-top">
       <div class="title-row">
@@ -287,6 +333,7 @@ def _render_detail(cfg: IntakeConfig, classified: ClassifiedItem) -> str:
         <div class="article-header">
           <h3>Saved Item</h3>
         </div>
+        {_content_gap(item)}
         <div class="article-body">
           {_render_article_body(body, omitted_sections={"Why This Was Saved", "Routing Recommendation", "Knowledge Base Recommendation"})}
         </div>
@@ -343,6 +390,9 @@ def _source_details(item, source_url: str, reader_url: str | None) -> str:
     if reader_url and reader_url != source_url:
         rows.append(f"<dt>Readwise</dt><dd>{_source_link(reader_url)}</dd>")
     rows.append(f"<dt>Source type</dt><dd>{escape(item.source_type)}</dd>")
+    rows.append(f"<dt>Content status</dt><dd>{escape(item.content_status)}</dd>")
+    if item.content_error:
+        rows.append(f"<dt>Extraction issue</dt><dd>{escape(item.content_error)}</dd>")
     rows.append(f"<dt>Ingested from</dt><dd>{escape(item.source)}</dd>")
     raw = item.raw or {}
     if raw.get("word_count"):
@@ -355,6 +405,27 @@ def _source_details(item, source_url: str, reader_url: str | None) -> str:
   <summary>Source details</summary>
   <dl>{"".join(rows)}</dl>
 </details>"""
+
+
+def _content_gap(item) -> str:
+    if item.content_status == "extracted" and not item.content_error:
+        return ""
+    reason = item.content_error or "No extracted content is available yet."
+    source = item.source_url or "the original source"
+    return f"""<div class="content-gap">
+  <strong>Content Needed</strong>
+  <p>{escape(reason)} Use the source if you can access it, then upload the PDF or paste extracted text here to enrich this same item.</p>
+  <details>
+    <summary>Provide content manually</summary>
+    <label>PDF
+      <input class="pdf-upload" type="file" name="manual_pdf" accept="application/pdf,.pdf">
+    </label>
+    <label>Extracted text
+      <textarea name="manual_content" rows="8" placeholder="Paste PDF text, article text, or transcript here."></textarea>
+    </label>
+    <small>Source remains {escape(source)}; this only replaces the missing captured context.</small>
+  </details>
+</div>"""
 
 
 def _source_link(source_url: str, label: str | None = None) -> str:
@@ -520,11 +591,82 @@ def _render_empty_detail() -> str:
     return '<article class="empty">No item selected</article>'
 
 
-def _first(form: dict[str, list[str]], key: str, default: str = "") -> str:
+def _sync_classification_frontmatter(frontmatter: dict[str, Any], classified: ClassifiedItem) -> dict[str, Any]:
+    updated = dict(frontmatter)
+    item = classified.record.item
+    classification = classified.classification
+    source = dict(updated.get("source") or {})
+    source.update({"title": item.title, "author": item.author, "url": item.source_url, "readwise_tags": item.readwise_tags})
+    updated["source"] = source
+    updated["classification"] = {
+        "primary_destination": classification.primary_destination,
+        "destination_candidates": classification.destination_candidates,
+        "confidence": classification.confidence,
+        "sensitivity": classification.sensitivity,
+        "rationale": classification.rationale,
+        "extracted_topics": classification.extracted_topics,
+        "mentioned_people": classification.mentioned_people,
+        "mentioned_orgs": classification.mentioned_orgs,
+    }
+    understanding = dict(updated.get("understanding") or {})
+    understanding["material_type"] = infer_material_type(item, classification)
+    understanding["processing_plan"] = infer_processing_plan(item, classification)
+    understanding["why_saved"] = classification.rationale
+    updated["understanding"] = understanding
+    actions = dict(updated.get("actions") or {})
+    actions.setdefault("approved", [])
+    actions["suggested"] = classification.suggested_actions
+    updated["actions"] = actions
+    return updated
+
+
+def _replace_extracted_context(body: str, content_text: str) -> str:
+    replacement = f"## Extracted / Captured Context\n\n{content_text.strip()}\n\n"
+    repaired, count = re.subn(
+        r"(?ms)^## Extracted / Captured Context\n\n.*?(?=^## |\Z)",
+        replacement,
+        body,
+        count=1,
+    )
+    if count == 0:
+        return f"{body.rstrip()}\n\n{replacement}"
+    return repaired
+
+
+def _first(form: dict[str, list[Any]], key: str, default: str = "") -> str:
     values = form.get(key)
     if not values:
         return default
-    return values[0]
+    value = values[0]
+    if isinstance(value, UploadFile):
+        return default
+    return str(value)
+
+
+def _first_file(form: dict[str, list[Any]], key: str) -> UploadFile | None:
+    values = form.get(key)
+    if not values:
+        return None
+    value = values[0]
+    if isinstance(value, UploadFile) and value.filename:
+        return value
+    return None
+
+
+def _save_uploaded_pdf(
+    cfg: IntakeConfig,
+    item_id: int,
+    source_id: str,
+    upload: UploadFile,
+    data: bytes,
+) -> Path:
+    upload_root = cfg.review.staging_root / "_uploads"
+    upload_root.mkdir(parents=True, exist_ok=True)
+    source_slug = slugify(source_id, fallback=f"item-{item_id}", max_length=48)
+    filename = slugify(Path(upload.filename or "uploaded.pdf").stem, fallback="uploaded", max_length=64)
+    path = upload_root / f"{item_id}-{source_slug}-{filename}.pdf"
+    path.write_bytes(data)
+    return path
 
 
 def _css() -> str:
@@ -565,6 +707,7 @@ form.decision-form { margin:0; }
 label { display:block; font-size:12px; color:var(--muted); font-weight:650; }
 select, textarea { width:100%; margin-top:5px; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; color:var(--ink); background:#fff; }
 textarea { resize:vertical; }
+.pdf-upload { display:block; width:100%; margin-top:5px; padding:10px; border:1px dashed #d59b37; border-radius:6px; background:#fffdf6; color:var(--ink); }
 .check { display:flex; align-items:center; gap:8px; color:var(--ink); height:34px; }
 .check input { width:16px; height:16px; }
 .thinking { margin:12px 0; color:var(--ink); }
@@ -588,6 +731,12 @@ textarea { resize:vertical; }
 .suggested-actions { margin-bottom:14px; }
 .suggested-actions ul { margin:0 0 12px; padding-left:18px; }
 .suggested-actions li { margin:5px 0; font-size:13px; line-height:1.35; }
+.content-gap { margin:0 0 14px; padding:12px; border:1px solid #f0c36d; border-radius:8px; background:#fff9eb; }
+.content-gap strong { display:block; font-size:13px; margin-bottom:4px; }
+.content-gap p { margin:0 0 8px; color:#7a4b00; font-size:13px; line-height:1.4; }
+.content-gap summary { cursor:pointer; color:#7a4b00; font-size:12px; font-weight:750; }
+.content-gap label { margin-top:8px; color:var(--ink); }
+.content-gap small { display:block; margin-top:6px; color:#7a4b00; font-size:12px; }
 .system-details { margin:12px 0; padding-top:10px; border-top:1px solid var(--line); }
 .system-details label { margin-top:10px; }
 .source-lower { margin-top:22px; }

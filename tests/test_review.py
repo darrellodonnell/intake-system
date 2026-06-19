@@ -4,7 +4,7 @@ from pathlib import Path
 from intake_system.config import ClassifierConfig, DatabaseConfig, DestinationConfig, IntakeConfig, ReadwiseConfig, ReviewConfig
 from intake_system.frontmatter import dumps
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
-from intake_system.review import clean_final_note, parse_review_decision, stage_review_note
+from intake_system.review import clean_final_note, parse_review_decision, review_body, stage_review_note
 
 
 def classified_item() -> ClassifiedItem:
@@ -107,3 +107,32 @@ def test_clean_final_note_omits_review_metadata() -> None:
 
     assert "review:" not in note
     assert "Short summary." in note
+
+
+def test_review_body_explains_pdf_extraction_gap() -> None:
+    source = SourceItem(
+        source="readwise",
+        source_id="pdf-1",
+        source_type="pdf",
+        title="IACR ePrint 2025/2203",
+        author="eprint.iacr.org",
+        source_url="https://eprint.iacr.org/2025/2203.pdf",
+        captured_at=None,
+        readwise_tags=[],
+        raw={},
+        content_text=None,
+        content_status="metadata_only",
+        content_error="Readwise did not provide extracted PDF text.",
+    )
+    classification = Classification(
+        primary_destination="professional",
+        destination_candidates=["professional"],
+        confidence=0.5,
+        sensitivity="private",
+        rationale="No strong knowledge base signal.",
+    )
+
+    body = review_body(ClassifiedItem(record=ItemRecord(id=5, item=source), classification=classification))
+
+    assert "Extraction status: Readwise did not provide extracted PDF text." in body
+    assert "Manual review source: https://eprint.iacr.org/2025/2203.pdf" in body

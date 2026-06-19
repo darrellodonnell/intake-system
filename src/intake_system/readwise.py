@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from html import unescape
 from html.parser import HTMLParser
+import re
 import time
 from typing import Any, Iterator
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, unquote, urlparse, urlunparse
 
 import httpx
 
@@ -63,7 +64,7 @@ def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") ->
     source_id = str(raw.get("id") or raw.get("document_id") or raw.get("url") or content_hash(raw))
     url = canonical_source_url(raw)
     source_type = _source_type(raw, url)
-    title = raw.get("title") or raw.get("document_title") or url or f"Readwise item {source_id}"
+    title = _title(raw, source_id=source_id, url=url, source_type=source_type)
     captured_at = _parse_datetime(
         raw.get("saved_at")
         or raw.get("created_at")
@@ -72,6 +73,7 @@ def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") ->
     )
     content_text = _content_text(raw)
     content_status = "extracted" if content_text else "metadata_only"
+    content_error = _content_error(raw, source_type=source_type, content_text=content_text)
     return SourceItem(
         source=source,
         source_id=source_id,
@@ -84,6 +86,7 @@ def normalize_readwise_item(raw: dict[str, Any], *, source: str = "readwise") ->
         raw=redact_sensitive(raw),
         content_text=content_text,
         content_status=content_status,
+        content_error=content_error,
         review_priority=_review_priority(source_type, raw),
     )
 
@@ -105,7 +108,26 @@ def canonical_public_url(url: str) -> str:
     host = parsed.netloc.lower()
     if host in {"twitter.com", "www.twitter.com"}:
         parsed = parsed._replace(scheme="https", netloc="x.com")
+    query = urlencode(
+        [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key != "__readwiseLocation"]
+    )
+    parsed = parsed._replace(query=query)
     return urlunparse(parsed)
+
+
+def _title(raw: dict[str, Any], *, source_id: str, url: str | None, source_type: str) -> str:
+    title = raw.get("title") or raw.get("document_title")
+    if str(title or "").strip():
+        return str(title).strip()
+    if source_type == "pdf" and url:
+        parsed = urlparse(url)
+        iacr_match = re.match(r"^/(\d{4})/(\d+)(?:\.pdf)?$", parsed.path)
+        if parsed.netloc.lower() == "eprint.iacr.org" and iacr_match:
+            return f"IACR ePrint {iacr_match.group(1)}/{iacr_match.group(2)}"
+        filename = unquote(parsed.path.rsplit("/", 1)[-1]).strip()
+        if filename:
+            return filename
+    return url or f"Readwise item {source_id}"
 
 
 def readwise_reader_url(raw: dict[str, Any]) -> str | None:
@@ -178,6 +200,17 @@ def _content_text(raw: dict[str, Any]) -> str | None:
         ]
     text = "\n\n".join(str(value).strip() for value in fields if str(value or "").strip())
     return text or None
+
+
+def _content_error(raw: dict[str, Any], *, source_type: str, content_text: str | None) -> str | None:
+    if content_text:
+        return None
+    error = raw.get("content_error") or raw.get("extraction_error")
+    if str(error or "").strip():
+        return str(error).strip()
+    if source_type == "pdf":
+        return "Readwise did not provide extracted PDF text."
+    return None
 
 
 def _html_to_text(value: Any) -> str | None:

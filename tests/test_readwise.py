@@ -66,3 +66,23 @@ def test_normalize_readwise_uses_html_content_over_misleading_summary() -> None:
     assert "Claude Projects might be the most underused power feature." in item.content_text
     assert "Project Instructions are permanent." in item.content_text
     assert "This tweet contains no text." not in item.content_text
+
+
+def test_normalize_readwise_iacr_pdf_without_title_records_extraction_gap() -> None:
+    item = normalize_readwise_item(
+        {
+            "id": "01kvdbh81nym7nwtq3zfg8hz0m",
+            "title": "",
+            "url": "https://read.readwise.io/read/01kvdbh81nym7nwtq3zfg8hz0m",
+            "source_url": "https://eprint.iacr.org/2025/2203.pdf?__readwiseLocation=",
+            "category": "pdf",
+            "content": None,
+            "html_content": "",
+        }
+    )
+
+    assert item.title == "IACR ePrint 2025/2203"
+    assert item.source_type == "pdf"
+    assert item.source_url == "https://eprint.iacr.org/2025/2203.pdf"
+    assert item.content_status == "metadata_only"
+    assert item.content_error == "Readwise did not provide extracted PDF text."

@@ -77,7 +77,7 @@ def review_body(classified: ClassifiedItem) -> str:
     item = classified.record.item
     classification = classified.classification
     source_link = item.source_url or "(no source URL)"
-    content_note = item.content_text or "_No extracted content yet. Review the source manually._"
+    content_note = captured_context_text(item)
     transcript_note = ""
     if item.source_type == "youtube":
         transcript_note = "\n\n## Transcript / Source Reference\n\nStore a transcript reference or source-specific notes here if needed."
@@ -105,6 +105,19 @@ Hypothesis: {classification.rationale}
 
 {content_note}{transcript_note}
 """
+
+
+def captured_context_text(item) -> str:
+    if item.content_text:
+        return item.content_text
+    if item.content_error:
+        reason = item.content_error
+    elif item.source_type == "pdf":
+        reason = "PDF text was not extracted."
+    else:
+        reason = "No extracted content is available yet."
+    source = item.source_url or "no source URL"
+    return f"Extraction status: {reason}\n\nManual review source: {source}"
 
 
 def stage_review_note(config: IntakeConfig, classified: ClassifiedItem) -> tuple[Path, dict]:

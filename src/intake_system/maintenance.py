@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 import json
 import re
@@ -10,6 +11,7 @@ import psycopg
 
 from intake_system.frontmatter import dumps, loads
 from intake_system.readwise import ReadwiseClient, canonical_source_url, normalize_readwise_item, readwise_reader_url
+from intake_system.review import captured_context_text
 
 
 @dataclass
@@ -46,7 +48,7 @@ def refresh_readwise_content(
         params.append(item_ids)
     rows = conn.execute(
         f"""
-        SELECT i.id, i.source_id, i.content_text, r.staged_path
+        SELECT i.id, i.source_id, i.title, i.source_url, i.content_text, i.content_status, i.content_error, r.staged_path
         FROM intake.items i
         LEFT JOIN intake.review_notes r ON r.item_id = i.id
         WHERE i.source = 'readwise'
@@ -64,10 +66,25 @@ def refresh_readwise_content(
             continue
         result.fetched += 1
         item = normalize_readwise_item(raw)
+        if not item.content_text and row["content_text"]:
+            item = replace(
+                item,
+                content_text=row["content_text"],
+                content_status=row["content_status"],
+                content_error=row["content_error"],
+            )
         if not item.content_text:
             result.no_content += 1
-            continue
-        if item.content_text != row["content_text"]:
+        item_changed = any(
+            [
+                item.title != row["title"],
+                item.source_url != row["source_url"],
+                item.content_text != row["content_text"],
+                item.content_status != row["content_status"],
+                item.content_error != row["content_error"],
+            ]
+        )
+        if item_changed:
             result.updated_items += 1
             if not dry_run:
                 from intake_system.db import IntakeRepository
@@ -80,7 +97,13 @@ def refresh_readwise_content(
                 result.missing_staged_files += 1
                 continue
             current = path.read_text()
-            repaired = repair_staged_extracted_context(current, content_text=item.content_text)
+            repaired = repair_staged_markdown_text(
+                current,
+                source_url=item.source_url or row["source_url"] or "",
+                readwise_url=readwise_reader_url(item.raw),
+                title=item.title,
+            )
+            repaired = repair_staged_extracted_context(repaired, content_text=captured_context_text(item))
             if repaired != current:
                 result.updated_staged_files += 1
                 if not dry_run:
@@ -173,9 +196,15 @@ def repair_staged_markdown_text(
     *,
     source_url: str,
     readwise_url: str | None,
+    title: str | None = None,
 ) -> str:
     frontmatter, body = loads(markdown_text)
     frontmatter = repair_source_frontmatter(frontmatter, source_url=source_url, readwise_url=readwise_url)
+    if title:
+        source = dict(frontmatter.get("source") or {})
+        source["title"] = title
+        frontmatter["source"] = source
+        body = re.sub(r"(?m)^# .*$", f"# {title}", body, count=1)
     body = re.sub(r"(?m)^Source: .*$", f"Source: {source_url}", body, count=1)
     return dumps(frontmatter, body)
 

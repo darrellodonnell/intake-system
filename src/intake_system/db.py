@@ -8,7 +8,7 @@ from typing import Iterable
 import psycopg
 from psycopg.rows import dict_row
 
-from intake_system.ids import content_hash
+from intake_system.ids import content_hash, utc_now_iso
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
 
 
@@ -174,6 +174,46 @@ class IntakeRepository:
                 classification.classifier_version,
             ),
         )
+
+    def replace_item_content(
+        self,
+        item_id: int,
+        content_text: str,
+        *,
+        provenance: str,
+        provenance_detail: dict | None = None,
+    ) -> ItemRecord | None:
+        current = self.conn.execute("SELECT * FROM intake.items WHERE id = %s", (item_id,)).fetchone()
+        if current is None:
+            return None
+        raw = dict(current["raw"] or {})
+        content_provenance = {
+            "source": provenance,
+            "loaded_at": utc_now_iso(),
+        }
+        if provenance_detail:
+            content_provenance.update(provenance_detail)
+        raw["content_provenance"] = content_provenance
+        row = self.conn.execute(
+            """
+            UPDATE intake.items
+            SET raw = %s::jsonb,
+                content_text = %s,
+                content_status = 'extracted',
+                content_error = NULL,
+                content_hash = %s,
+                updated_at = now()
+            WHERE id = %s
+            RETURNING *
+            """,
+            (
+                json.dumps(raw),
+                content_text,
+                content_hash(current["title"], current["source_url"], content_text, raw),
+                item_id,
+            ),
+        ).fetchone()
+        return None if row is None else _item_record(row)
 
     def classified_without_review(self, *, limit: int = 100) -> list[ClassifiedItem]:
         rows = self.conn.execute(
