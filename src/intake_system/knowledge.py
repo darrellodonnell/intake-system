@@ -77,7 +77,7 @@ def infer_material_type(item: SourceItem, classification: Classification) -> str
     text = _haystack(item, classification)
     if any(term in text for term in ("client", "prospect", "member", "ayra")):
         return "company/client material"
-    if item.source_type == "youtube":
+    if item.source_type == "youtube" or _looks_like_video_url(item.source_url):
         return "video"
     if item.source_type in {"x_twitter", "linkedin"}:
         return "social post/thread"
@@ -97,7 +97,7 @@ def infer_material_type(item: SourceItem, classification: Classification) -> str
 def infer_processing_plan(item: SourceItem, classification: Classification) -> list[str]:
     text = _haystack(item, classification)
     intents: list[str] = []
-    if item.source_type in {"youtube", "audio", "podcast"}:
+    if item.source_type in {"youtube", "audio", "podcast"} or _looks_like_video_url(item.source_url):
         intents.append("Transcribe and extract for video/audio")
     if item.source_type in {"pinboard", "bookmark"}:
         intents.append("Save as reference")
@@ -154,3 +154,10 @@ def _dedupe(values: list[str]) -> list[str]:
         if value not in result:
             result.append(value)
     return result
+
+
+def _looks_like_video_url(value: str | None) -> bool:
+    if not value:
+        return False
+    url = value.lower()
+    return any(domain in url for domain in ("youtube.com/", "youtu.be/", "vimeo.com/"))

@@ -211,6 +211,33 @@ def test_bookmark_sources_are_reference_material() -> None:
     assert "Save as reference" in infer_processing_plan(source, classification)
 
 
+def test_pinboard_youtube_bookmarks_are_video_material() -> None:
+    source = SourceItem(
+        source="pinboard",
+        source_id="pin-video-1",
+        source_type="bookmark",
+        title="Useful AI video",
+        author=None,
+        source_url="https://www.youtube.com/watch?v=2OD14-0cot4",
+        captured_at=None,
+        readwise_tags=["ai", "models"],
+        raw={},
+        content_text="Pinboard tags: ai, models",
+        content_status="extracted",
+    )
+    classification = Classification(
+        primary_destination="professional",
+        destination_candidates=["professional"],
+        confidence=0.7,
+        sensitivity="private",
+        rationale="AI terminology detected.",
+    )
+
+    assert infer_material_type(source, classification) == "video"
+    assert "Transcribe and extract for video/audio" in infer_processing_plan(source, classification)
+    assert "Save as reference" in infer_processing_plan(source, classification)
+
+
 def test_pinboard_review_uses_bookmark_metadata_for_why_saved() -> None:
     source = SourceItem(
         source="pinboard",
