@@ -12,7 +12,7 @@ from intake_system.config import (
 )
 from intake_system.frontmatter import dumps
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
-from intake_system.knowledge import infer_material_type, infer_processing_plan
+from intake_system.knowledge import infer_material_type, infer_processing_plan, infer_why_saved
 from intake_system.review import clean_final_note, parse_review_decision, review_body, review_frontmatter, stage_review_note
 
 
@@ -209,3 +209,38 @@ def test_bookmark_sources_are_reference_material() -> None:
 
     assert infer_material_type(source, classification) == "reference/resource"
     assert "Save as reference" in infer_processing_plan(source, classification)
+
+
+def test_pinboard_review_uses_bookmark_metadata_for_why_saved() -> None:
+    source = SourceItem(
+        source="pinboard",
+        source_id="pin-1",
+        source_type="bookmark",
+        title="Sparse but useful URL",
+        author=None,
+        source_url="https://example.com/sparse",
+        captured_at=None,
+        readwise_tags=["aos", "architecture"],
+        raw={"extended": "Connect this to intake routing."},
+        content_text="Pinboard note: Connect this to intake routing.\n\nPinboard tags: aos, architecture",
+        content_status="extracted",
+    )
+    classification = Classification(
+        primary_destination="professional",
+        destination_candidates=["professional"],
+        confidence=0.7,
+        sensitivity="private",
+        rationale="AOS terminology detected.",
+    )
+    classified = ClassifiedItem(record=ItemRecord(id=55, item=source), classification=classification)
+
+    why_saved = infer_why_saved(source, classification)
+    frontmatter = review_frontmatter(classified)
+    body = review_body(classified)
+
+    assert why_saved == (
+        "Darrell saved this Pinboard bookmark with the note: Connect this to intake routing. "
+        "Tags suggest: aos, architecture."
+    )
+    assert frontmatter["understanding"]["why_saved"] == why_saved
+    assert f"Hypothesis: {why_saved}" in body

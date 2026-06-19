@@ -16,6 +16,7 @@ from intake_system.knowledge import (
     default_knowledge_bases,
     infer_material_type,
     infer_processing_plan,
+    infer_why_saved,
 )
 from intake_system.models import ClassifiedItem, ReviewDecision
 from intake_system.readwise import readwise_reader_url
@@ -37,6 +38,7 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
     parent = parent_source_context(item)
     if parent:
         source["parent"] = parent
+    why_saved = infer_why_saved(item, classification)
     return {
         "intake": {
             "item_id": classified.record.id,
@@ -60,7 +62,7 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
         "understanding": {
             "material_type": infer_material_type(item, classification),
             "processing_plan": infer_processing_plan(item, classification),
-            "why_saved": classification.rationale,
+            "why_saved": why_saved,
         },
         "review": {
             "status": "pending",
@@ -88,6 +90,7 @@ def review_body(classified: ClassifiedItem) -> str:
     transcript_note = ""
     if item.source_type == "youtube":
         transcript_note = "\n\n## Transcript / Source Reference\n\nStore a transcript reference or source-specific notes here if needed."
+    why_saved = infer_why_saved(item, classification)
     actions = "\n".join(f"- {action}" for action in classification.suggested_actions) or "- No suggested actions."
     return f"""# {item.title}
 
@@ -95,7 +98,7 @@ Source: {source_link}{parent_line}
 
 ## Why This Was Saved
 
-Hypothesis: {classification.rationale}
+Hypothesis: {why_saved}
 
 ## Knowledge Base Recommendation
 

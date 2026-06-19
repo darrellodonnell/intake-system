@@ -117,6 +117,21 @@ def infer_processing_plan(item: SourceItem, classification: Classification) -> l
     return _dedupe(intents) or ["Defer/no further processing"]
 
 
+def infer_why_saved(item: SourceItem, classification: Classification) -> str:
+    if item.source == "pinboard" or item.source_type in {"pinboard", "bookmark"}:
+        note = str((item.raw or {}).get("extended") or "").strip()
+        tags = item.readwise_tags
+        tag_text = ", ".join(tags)
+        if note and tags:
+            return f"Darrell saved this Pinboard bookmark with the note: {note} Tags suggest: {tag_text}."
+        if note:
+            return f"Darrell saved this Pinboard bookmark with the note: {note}"
+        if tags:
+            return f"Darrell saved this Pinboard bookmark as a tagged reference. Tags suggest: {tag_text}."
+        return "Darrell saved this URL as a Pinboard bookmark; infer intent from the title and target URL."
+    return classification.rationale
+
+
 def _haystack(item: SourceItem, classification: Classification) -> str:
     values = [
         item.title,

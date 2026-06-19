@@ -60,9 +60,9 @@ def normalize_pinboard_bookmark(raw: dict[str, Any]) -> SourceItem:
 def _content_text(extended: str, tags: list[str]) -> str | None:
     parts = []
     if extended:
-        parts.append(extended)
+        parts.append(f"Pinboard note: {extended}")
     if tags:
-        parts.append(f"Tags: {', '.join(tags)}")
+        parts.append(f"Pinboard tags: {', '.join(tags)}")
     return "\n\n".join(parts) or None
 
 

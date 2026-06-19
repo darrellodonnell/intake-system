@@ -19,8 +19,8 @@ def test_normalize_pinboard_bookmark_uses_target_url_and_tags() -> None:
     assert item.title == "Useful article"
     assert item.source_url == "https://example.com/article"
     assert item.readwise_tags == ["ai", "reference"]
-    assert "Why I saved this." in item.content_text
-    assert "Tags: ai, reference" in item.content_text
+    assert "Pinboard note: Why I saved this." in item.content_text
+    assert "Pinboard tags: ai, reference" in item.content_text
 
 
 def test_pinboard_client_fetches_bookmarks_since_cursor(monkeypatch) -> None:
