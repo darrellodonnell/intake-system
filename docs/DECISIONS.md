@@ -21,3 +21,12 @@
 - Use frontmatter edits as the V0 review action surface.
 - Use logical destination keys in git-managed config; absolute paths and credentials stay in ignored local config/env.
 
+## 2026-06-19: Future Supamaus Ingestion
+
+- Darrell purchased Supamaus as a candidate capture tool for websites, selected text, PDFs, and related clipping flows.
+- Supamaus can send captured material to an MCP endpoint, so intake should plan for an MCP-facing ingestion boundary alongside Readwise.
+- Treat Supamaus captures as another source of staged intake items, not as direct final writes to knowledge bases.
+- Preserve capture provenance: original URL, selected text/PDF artifact, capture timestamp, Supamaus source identifiers, and any MCP request metadata that is safe to persist.
+- Reuse the existing routing/review model: infer knowledge bases and processing plans, then require review approval before final Markdown writes.
+- Keep the MCP boundary narrow: accept capture payloads and intent/context refs, but do not expose broad filesystem write authority or reusable credentials through the Supamaus integration.
+- Open design questions for implementation: Supamaus payload shape, auth model, local vs hosted MCP endpoint, PDF artifact handling, idempotency keys, and whether Supamaus can provide parent-page/context metadata similar to Readwise highlights.
