@@ -136,7 +136,7 @@ def parent_source_context(item) -> dict | None:
     if not url:
         return None
     return {
-        "title": parent.get("title"),
+        "title": parent.get("site_name") or parent.get("title"),
         "url": url,
         "source_id": parent.get("id"),
     }
