@@ -384,17 +384,20 @@ def _decision_question(classified: ClassifiedItem) -> str:
 
 
 def _source_details(item, source_url: str, reader_url: str | None) -> str:
-    rows = [
-        f"<dt>Original source</dt><dd>{_source_link(source_url) if source_url else 'No source URL'}</dd>",
-    ]
+    source_label = "Readwise highlight" if item.source_type == "highlight" else "Original source"
+    rows = [f"<dt>{source_label}</dt><dd>{_source_link(source_url) if source_url else 'No source URL'}</dd>"]
     if reader_url and reader_url != source_url:
         rows.append(f"<dt>Readwise</dt><dd>{_source_link(reader_url)}</dd>")
+    raw = item.raw or {}
+    parent = raw.get("_parent") if isinstance(raw.get("_parent"), dict) else {}
+    parent_url = parent.get("source_url") or parent.get("url")
+    if parent_url and parent_url != source_url:
+        rows.append(f"<dt>Parent article</dt><dd>{_source_link(str(parent_url), str(parent.get('title') or parent_url))}</dd>")
     rows.append(f"<dt>Source type</dt><dd>{escape(item.source_type)}</dd>")
     rows.append(f"<dt>Content status</dt><dd>{escape(item.content_status)}</dd>")
     if item.content_error:
         rows.append(f"<dt>Extraction issue</dt><dd>{escape(item.content_error)}</dd>")
     rows.append(f"<dt>Ingested from</dt><dd>{escape(item.source)}</dd>")
-    raw = item.raw or {}
     if raw.get("word_count"):
         rows.append(f"<dt>Word count</dt><dd>{escape(str(raw.get('word_count')))}</dd>")
     if raw.get("reading_time"):

@@ -119,6 +119,10 @@ def _title(raw: dict[str, Any], *, source_id: str, url: str | None, source_type:
     title = raw.get("title") or raw.get("document_title")
     if str(title or "").strip():
         return str(title).strip()
+    if source_type == "highlight":
+        content_title = _excerpt_title(raw.get("content"), prefix="Highlight")
+        if content_title:
+            return content_title
     if source_type == "pdf" and url:
         parsed = urlparse(url)
         iacr_match = re.match(r"^/(\d{4})/(\d+)(?:\.pdf)?$", parsed.path)
@@ -128,6 +132,15 @@ def _title(raw: dict[str, Any], *, source_id: str, url: str | None, source_type:
         if filename:
             return filename
     return url or f"Readwise item {source_id}"
+
+
+def _excerpt_title(value: Any, *, prefix: str, max_length: int = 96) -> str | None:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return None
+    if len(text) > max_length:
+        text = f"{text[:max_length].rstrip()}..."
+    return f"{prefix}: {text}"
 
 
 def readwise_reader_url(raw: dict[str, Any]) -> str | None:
@@ -147,7 +160,7 @@ def is_readwise_reader_url(url: str) -> bool:
 
 def _source_type(raw: dict[str, Any], url: str | None) -> str:
     category = str(raw.get("category") or raw.get("source_type") or "").lower()
-    if category in {"article", "pdf", "epub", "email", "rss", "tweet", "video"}:
+    if category in {"article", "pdf", "epub", "email", "rss", "tweet", "video", "highlight"}:
         if category == "video":
             return "youtube" if url and "youtu" in url else "video"
         return "x_twitter" if category == "tweet" else category
@@ -193,6 +206,7 @@ def _content_text(raw: dict[str, Any]) -> str | None:
         fields = [html_text, raw.get("notes"), raw.get("document_note")]
     else:
         fields = [
+            raw.get("content"),
             raw.get("summary"),
             raw.get("notes"),
             raw.get("document_note"),
@@ -270,6 +284,7 @@ def _review_priority(source_type: str, raw: dict[str, Any]) -> int:
         "youtube": 80,
         "x_twitter": 75,
         "document": 70,
+        "highlight": 70,
         "article": 60,
         "pdf": 60,
     }.get(source_type, 50)

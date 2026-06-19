@@ -40,3 +40,33 @@ def test_repair_staged_extracted_context_replaces_placeholder_context() -> None:
     assert "This tweet contains no text." not in body
     assert "Claude Projects might be the most underused power feature." in body
     assert "## Transcript / Source Reference\n\nKeep this section." in body
+
+
+def test_repair_staged_markdown_text_adds_highlight_parent_context() -> None:
+    markdown = dumps(
+        {
+            "source": {
+                "title": "https://read.readwise.io/read/highlight-1",
+                "url": "https://read.readwise.io/read/highlight-1",
+            }
+        },
+        "# https://read.readwise.io/read/highlight-1\n\nSource: https://read.readwise.io/read/highlight-1\n",
+    )
+
+    repaired = repair_staged_markdown_text(
+        markdown,
+        source_url="https://read.readwise.io/read/highlight-1",
+        readwise_url=None,
+        title="Highlight: This index will give you an idea",
+        parent={
+            "title": "Greece Travel Guide",
+            "url": "https://www.greektravel.com/",
+            "source_id": "parent-1",
+        },
+    )
+
+    frontmatter, body = loads(repaired)
+    assert frontmatter["source"]["title"] == "Highlight: This index will give you an idea"
+    assert frontmatter["source"]["parent"]["url"] == "https://www.greektravel.com/"
+    assert "# Highlight: This index will give you an idea" in body
+    assert "Parent Article: https://www.greektravel.com/" in body

@@ -86,3 +86,23 @@ def test_normalize_readwise_iacr_pdf_without_title_records_extraction_gap() -> N
     assert item.source_url == "https://eprint.iacr.org/2025/2203.pdf"
     assert item.content_status == "metadata_only"
     assert item.content_error == "Readwise did not provide extracted PDF text."
+
+
+def test_normalize_readwise_highlight_uses_content_and_reader_link() -> None:
+    item = normalize_readwise_item(
+        {
+            "id": "01ktekezfe3aactkaz9y7p59hp",
+            "url": "https://read.readwise.io/read/01ktekezfe3aactkaz9y7p59hp",
+            "title": None,
+            "category": "highlight",
+            "content": "    This index will give you an idea of what sections are on each of the main Greece pages.",
+            "source_url": None,
+            "parent_id": "01kt0hw4mac9nqcpkcezjh537h",
+        }
+    )
+
+    assert item.source_type == "highlight"
+    assert item.source_url == "https://read.readwise.io/read/01ktekezfe3aactkaz9y7p59hp"
+    assert item.title == "Highlight: This index will give you an idea of what sections are on each of the main Greece pages."
+    assert item.content_status == "extracted"
+    assert item.content_text == "This index will give you an idea of what sections are on each of the main Greece pages."

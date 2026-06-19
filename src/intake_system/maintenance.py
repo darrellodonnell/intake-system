@@ -11,7 +11,7 @@ import psycopg
 
 from intake_system.frontmatter import dumps, loads
 from intake_system.readwise import ReadwiseClient, canonical_source_url, normalize_readwise_item, readwise_reader_url
-from intake_system.review import captured_context_text
+from intake_system.review import captured_context_text, parent_source_context
 
 
 @dataclass
@@ -65,6 +65,7 @@ def refresh_readwise_content(
         if raw is None:
             continue
         result.fetched += 1
+        raw = _with_parent_context(raw, client)
         item = normalize_readwise_item(raw)
         if not item.content_text and row["content_text"]:
             item = replace(
@@ -102,6 +103,7 @@ def refresh_readwise_content(
                 source_url=item.source_url or row["source_url"] or "",
                 readwise_url=readwise_reader_url(item.raw),
                 title=item.title,
+                parent=parent_source_context(item),
             )
             repaired = repair_staged_extracted_context(repaired, content_text=captured_context_text(item))
             if repaired != current:
@@ -109,6 +111,18 @@ def refresh_readwise_content(
                 if not dry_run:
                     path.write_text(repaired)
     return result
+
+
+def _with_parent_context(raw: dict, client: ReadwiseClient) -> dict:
+    parent_id = raw.get("parent_id")
+    if not parent_id or raw.get("_parent"):
+        return raw
+    parent = client.get_raw_item(str(parent_id))
+    if not parent:
+        return raw
+    enriched = dict(raw)
+    enriched["_parent"] = parent
+    return enriched
 
 
 def repair_readwise_source_urls(conn: psycopg.Connection, *, dry_run: bool = True) -> SourceUrlRepairResult:
@@ -197,15 +211,22 @@ def repair_staged_markdown_text(
     source_url: str,
     readwise_url: str | None,
     title: str | None = None,
+    parent: dict | None = None,
 ) -> str:
     frontmatter, body = loads(markdown_text)
     frontmatter = repair_source_frontmatter(frontmatter, source_url=source_url, readwise_url=readwise_url)
+    if parent:
+        source = dict(frontmatter.get("source") or {})
+        source["parent"] = parent
+        frontmatter["source"] = source
     if title:
         source = dict(frontmatter.get("source") or {})
         source["title"] = title
         frontmatter["source"] = source
         body = re.sub(r"(?m)^# .*$", f"# {title}", body, count=1)
     body = re.sub(r"(?m)^Source: .*$", f"Source: {source_url}", body, count=1)
+    if parent and parent.get("url") and "Parent Article:" not in body:
+        body = re.sub(r"(?m)^(Source: .*)$", rf"\1\nParent Article: {parent['url']}", body, count=1)
     return dumps(frontmatter, body)
 
 

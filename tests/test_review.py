@@ -4,7 +4,7 @@ from pathlib import Path
 from intake_system.config import ClassifierConfig, DatabaseConfig, DestinationConfig, IntakeConfig, ReadwiseConfig, ReviewConfig
 from intake_system.frontmatter import dumps
 from intake_system.models import Classification, ClassifiedItem, ItemRecord, SourceItem
-from intake_system.review import clean_final_note, parse_review_decision, review_body, stage_review_note
+from intake_system.review import clean_final_note, parse_review_decision, review_body, review_frontmatter, stage_review_note
 
 
 def classified_item() -> ClassifiedItem:
@@ -136,3 +136,40 @@ def test_review_body_explains_pdf_extraction_gap() -> None:
 
     assert "Extraction status: Readwise did not provide extracted PDF text." in body
     assert "Manual review source: https://eprint.iacr.org/2025/2203.pdf" in body
+
+
+def test_review_keeps_highlight_parent_context() -> None:
+    source = SourceItem(
+        source="readwise",
+        source_id="highlight-1",
+        source_type="highlight",
+        title="Highlight: This index will give you an idea",
+        author=None,
+        source_url="https://read.readwise.io/read/highlight-1",
+        captured_at=None,
+        readwise_tags=[],
+        raw={
+            "_parent": {
+                "id": "parent-1",
+                "title": "Greece Travel Guide",
+                "source_url": "https://www.greektravel.com/",
+            }
+        },
+        content_text="This index will give you an idea.",
+        content_status="extracted",
+    )
+    classification = Classification(
+        primary_destination="personal",
+        destination_candidates=["personal"],
+        confidence=0.7,
+        sensitivity="private",
+        rationale="Travel signal detected.",
+    )
+    classified = ClassifiedItem(record=ItemRecord(id=19, item=source), classification=classification)
+
+    frontmatter = review_frontmatter(classified)
+    body = review_body(classified)
+
+    assert frontmatter["source"]["parent"]["url"] == "https://www.greektravel.com/"
+    assert "Source: https://read.readwise.io/read/highlight-1" in body
+    assert "Parent Article: https://www.greektravel.com/" in body

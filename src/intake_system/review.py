@@ -34,6 +34,9 @@ def review_frontmatter(classified: ClassifiedItem) -> dict:
     reader_url = readwise_reader_url(item.raw)
     if reader_url and reader_url != item.source_url:
         source["readwise_url"] = reader_url
+    parent = parent_source_context(item)
+    if parent:
+        source["parent"] = parent
     return {
         "intake": {
             "item_id": classified.record.id,
@@ -77,6 +80,10 @@ def review_body(classified: ClassifiedItem) -> str:
     item = classified.record.item
     classification = classified.classification
     source_link = item.source_url or "(no source URL)"
+    parent = parent_source_context(item)
+    parent_line = ""
+    if parent:
+        parent_line = f"\nParent Article: {parent.get('url')}"
     content_note = captured_context_text(item)
     transcript_note = ""
     if item.source_type == "youtube":
@@ -84,7 +91,7 @@ def review_body(classified: ClassifiedItem) -> str:
     actions = "\n".join(f"- {action}" for action in classification.suggested_actions) or "- No suggested actions."
     return f"""# {item.title}
 
-Source: {source_link}
+Source: {source_link}{parent_line}
 
 ## Why This Was Saved
 
@@ -118,6 +125,21 @@ def captured_context_text(item) -> str:
         reason = "No extracted content is available yet."
     source = item.source_url or "no source URL"
     return f"Extraction status: {reason}\n\nManual review source: {source}"
+
+
+def parent_source_context(item) -> dict | None:
+    raw = item.raw or {}
+    parent = raw.get("_parent")
+    if not isinstance(parent, dict):
+        return None
+    url = parent.get("source_url") or parent.get("url")
+    if not url:
+        return None
+    return {
+        "title": parent.get("title"),
+        "url": url,
+        "source_id": parent.get("id"),
+    }
 
 
 def stage_review_note(config: IntakeConfig, classified: ClassifiedItem) -> tuple[Path, dict]:
@@ -199,6 +221,9 @@ def clean_final_note(classified: ClassifiedItem, decision: ReviewDecision) -> st
         },
         "topics": classification.extracted_topics,
     }
+    parent = parent_source_context(item)
+    if parent:
+        frontmatter["source"]["parent"] = parent
     actions = "\n".join(f"- {action}" for action in decision.suggested_actions) or "- None."
     body = f"""# {item.title}
 

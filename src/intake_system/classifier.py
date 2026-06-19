@@ -83,6 +83,7 @@ def classify_item(item: SourceItem, *, active_context: dict[str, Any] | None = N
 
 
 def _haystack(item: SourceItem) -> str:
+    parent = item.raw.get("_parent") if isinstance(item.raw.get("_parent"), dict) else {}
     values = [
         item.title,
         item.author,
@@ -90,6 +91,9 @@ def _haystack(item: SourceItem) -> str:
         " ".join(item.readwise_tags),
         item.content_text,
         str(item.raw.get("site_name") or ""),
+        str(parent.get("title") or ""),
+        str(parent.get("source_url") or ""),
+        str(parent.get("site_name") or ""),
     ]
     return "\n".join(str(value).lower() for value in values if value)
 
